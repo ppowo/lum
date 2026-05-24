@@ -32,7 +32,7 @@ jobs:
         id: next
         shell: bash
         run: |
-          current="$(cargo pkgid | sed 's/.*@//')"
+          current="$(cargo pkgid | sed 's/.*[#@]//')"
           latest_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)"
           latest="${latest_tag#v}"
 

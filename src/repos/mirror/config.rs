@@ -80,7 +80,7 @@ fn validate_url(url: &str, entry: usize) -> Result<()> {
 
 fn repo_basename(url: &str) -> String {
     // Extract last segment after / or :
-    let base = url.rsplit(|c| c == '/' || c == ':').next().unwrap_or(url);
+    let base = url.rsplit(['/', ':']).next().unwrap_or(url);
     // Strip .git suffix
     let stripped = base.strip_suffix(".git").unwrap_or(base);
     stripped.to_string()

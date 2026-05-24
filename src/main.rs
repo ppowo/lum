@@ -4,6 +4,7 @@ mod logging;
 mod radio;
 mod repos;
 mod tools;
+mod yt;
 
 use anyhow::Result;
 use clap::Parser;
@@ -27,5 +28,6 @@ async fn run() -> Result<()> {
         Commands::Repos { command } => repos::run(command),
         Commands::Env { command } => env::run(command),
         Commands::Tools { command } => tools::run(command),
+        Commands::Yt { command } => yt::run(command).await,
     }
 }

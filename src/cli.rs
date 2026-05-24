@@ -27,6 +27,11 @@ pub enum Commands {
         #[command(subcommand)]
         command: ToolsCommand,
     },
+    /// Download audio, video, or albums from YouTube using yt-dlp.
+    Yt {
+        #[command(subcommand)]
+        command: YtCommand,
+    },
 }
 
 #[derive(Debug, Args, Clone)]
@@ -134,6 +139,30 @@ pub enum MirrorCommand {
     },
 }
 
+#[derive(Debug, Subcommand)]
+pub enum YtCommand {
+    /// Download audio from YouTube URL(s).
+    Aud {
+        /// YouTube URL(s) to download.
+        #[arg(required = true)]
+        urls: Vec<String>,
+    },
+    /// Download video from YouTube URL(s).
+    Vid {
+        /// Maximum video height (default: 1080).
+        #[arg(long)]
+        height: Option<u32>,
+        /// YouTube URL(s) to download.
+        #[arg(required = true)]
+        urls: Vec<String>,
+    },
+    /// Download an album or playlist from YouTube URL(s).
+    Alb {
+        /// YouTube URL(s) to download.
+        #[arg(required = true)]
+        urls: Vec<String>,
+    },
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,7 +173,10 @@ mod tests {
         let cli = Cli::parse_from(["lum", "radio"]);
         match cli.command {
             Commands::Radio(args) => assert_eq!(args.station, None),
-            Commands::Env { .. } | Commands::Tools { .. } | Commands::Repos { .. } => {
+            Commands::Env { .. }
+            | Commands::Tools { .. }
+            | Commands::Repos { .. }
+            | Commands::Yt { .. } => {
                 panic!("expected radio command")
             }
         }
@@ -155,7 +187,10 @@ mod tests {
         let cli = Cli::parse_from(["lum", "radio", "atma"]);
         match cli.command {
             Commands::Radio(args) => assert_eq!(args.station.as_deref(), Some("atma")),
-            Commands::Env { .. } | Commands::Tools { .. } | Commands::Repos { .. } => {
+            Commands::Env { .. }
+            | Commands::Tools { .. }
+            | Commands::Repos { .. }
+            | Commands::Yt { .. } => {
                 panic!("expected radio command")
             }
         }

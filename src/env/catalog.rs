@@ -5,9 +5,7 @@ pub(crate) const ALIASES: &[(&str, &str)] = &[
     ("synthetic", "SYNTHETIC_API_KEY"),
 ];
 
-pub(crate) const FORCED_ENV: &[(&str, &str)] = &[
-    ("npm_config_ignore_scripts", "true"),
-];
+pub(crate) const FORCED_ENV: &[(&str, &str)] = &[("npm_config_ignore_scripts", "true")];
 
 pub(crate) fn variable_for_alias(alias: &str) -> Option<&'static str> {
     ALIASES

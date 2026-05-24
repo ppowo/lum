@@ -32,10 +32,10 @@ pub fn spawn_control_task() -> mpsc::Receiver<ControlEvent> {
             match event::poll(Duration::from_millis(100)) {
                 Ok(true) => match event::read() {
                     Ok(Event::Key(key)) => {
-                        if let Some(control) = map_key(key) {
-                            if tx.blocking_send(control).is_err() || control == ControlEvent::Stop {
-                                break;
-                            }
+                        if let Some(control) = map_key(key)
+                            && (tx.blocking_send(control).is_err() || control == ControlEvent::Stop)
+                        {
+                            break;
                         }
                     }
                     Ok(_) => {}

@@ -1,0 +1,3 @@
+# Application-Wide Rotating Tracing Logs
+
+Lum initializes `tracing` once at startup for the whole CLI, writes always-on daily rotating logs to a platform-native `dev.ppowo.lum` log directory selected with `directories`, and keeps the last 7 days of logs. User-facing output stays plain and minimal while diagnostic detail goes to logs; `anyhow` is used for internal error propagation and `RUST_LOG` can raise verbosity from the default `info` level. This is intentional because audio/network failures are difficult to reproduce after the fact, and bounded always-on logs are more useful than opt-in logs for debugging glitches.

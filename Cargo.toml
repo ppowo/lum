@@ -3,4 +3,22 @@ name = "lum"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+members = [".", "xtask"]
+resolver = "3"
+
 [dependencies]
+anyhow = "1.0.102"
+audioadapter-buffers = "3.0.0"
+clap = { version = "4.6.1", features = ["derive"] }
+cpal = "0.17.3"
+crossterm = "0.29.0"
+directories = "6.0.0"
+reqwest = { version = "0.13.3", default-features = false, features = ["blocking", "rustls"] }
+ringbuf = "0.5.0"
+rubato = "3.0.0"
+symphonia = { version = "0.6.0", features = ["all"] }
+tokio = { version = "1.52.3", features = ["full"] }
+tracing = "0.1.44"
+tracing-appender = "0.2.5"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }

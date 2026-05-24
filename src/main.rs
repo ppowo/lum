@@ -1,3 +1,25 @@
-fn main() {
-    println!("Hello, world!");
+mod cli;
+mod logging;
+mod radio;
+
+use anyhow::Result;
+use clap::Parser;
+use cli::{Cli, Commands};
+
+#[tokio::main]
+async fn main() {
+    if let Err(error) = run().await {
+        eprintln!("{error}");
+        tracing::error!(error = ?error, "command failed");
+        std::process::exit(1);
+    }
+}
+
+async fn run() -> Result<()> {
+    let _log_guard = logging::init()?;
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Radio(args) => radio::run(args).await,
+    }
 }

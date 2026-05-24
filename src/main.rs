@@ -1,4 +1,5 @@
 mod cli;
+mod env;
 mod logging;
 mod radio;
 
@@ -21,5 +22,6 @@ async fn run() -> Result<()> {
 
     match cli.command {
         Commands::Radio(args) => radio::run(args).await,
+        Commands::Env { command } => env::run(command),
     }
 }

@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
 #[command(name = "lum", version, about = "Personal CLI toolbox")]
@@ -11,12 +11,51 @@ pub struct Cli {
 pub enum Commands {
     /// Listen to internet radio stations.
     Radio(RadioArgs),
+    /// Manage shell environment variables and lum's bin path.
+    Env {
+        #[command(subcommand)]
+        command: EnvCommand,
+    },
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct RadioArgs {
     /// Station code to play. Omit to list stations.
     pub station: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum EnvShell {
+    Posix,
+    Powershell,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum EnvCommand {
+    /// Print shell integration code for eval in shell startup.
+    Init {
+        #[arg(long, value_enum)]
+        shell: Option<EnvShell>,
+    },
+    /// Set a managed environment variable alias.
+    Set {
+        #[arg(long, value_enum)]
+        shell: Option<EnvShell>,
+        alias: String,
+        value: String,
+    },
+    /// Unset a managed environment variable alias.
+    Unset {
+        #[arg(long, value_enum)]
+        shell: Option<EnvShell>,
+        alias: String,
+    },
+    /// Show managed aliases and forced defaults.
+    List,
+    /// Show alias to environment variable mappings.
+    Aliases,
+    /// Print lum's environment bin directory.
+    Path,
 }
 
 #[cfg(test)]
@@ -29,6 +68,7 @@ mod tests {
         let cli = Cli::parse_from(["lum", "radio"]);
         match cli.command {
             Commands::Radio(args) => assert_eq!(args.station, None),
+            Commands::Env { .. } => panic!("expected radio command"),
         }
     }
 
@@ -37,6 +77,7 @@ mod tests {
         let cli = Cli::parse_from(["lum", "radio", "atma"]);
         match cli.command {
             Commands::Radio(args) => assert_eq!(args.station.as_deref(), Some("atma")),
+            Commands::Env { .. } => panic!("expected radio command"),
         }
     }
 }

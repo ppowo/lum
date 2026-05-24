@@ -4,7 +4,7 @@ use std::{
     process::Command,
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 fn main() {
     if let Err(error) = run() {
@@ -39,12 +39,21 @@ fn print_help() {
 
 fn install() -> Result<()> {
     let repo = repo_root()?;
-    run_command(Command::new("cargo").arg("build").arg("--release").current_dir(&repo))?;
+    run_command(
+        Command::new("cargo")
+            .arg("build")
+            .arg("--release")
+            .current_dir(&repo),
+    )?;
 
     let binary = repo.join("target").join("release").join(binary_name("lum"));
     let install_dir = choose_install_dir()?;
-    fs::create_dir_all(&install_dir)
-        .with_context(|| format!("failed to create install directory {}", install_dir.display()))?;
+    fs::create_dir_all(&install_dir).with_context(|| {
+        format!(
+            "failed to create install directory {}",
+            install_dir.display()
+        )
+    })?;
 
     let dst = install_dir.join(binary_name("lum"));
     install_binary(&binary, &dst)?;
@@ -92,14 +101,26 @@ fn choose_install_dir() -> Result<PathBuf> {
 }
 
 fn preferred_dirs(home: &Path) -> Vec<PathBuf> {
-    vec![home.join(".bio").join("bin"), home.join(".local").join("bin"), home.join("bin")]
+    vec![
+        home.join(".bio").join("bin"),
+        home.join(".local").join("bin"),
+        home.join("bin"),
+    ]
 }
 
 fn fallback_dirs(home: &Path) -> Vec<PathBuf> {
     if cfg!(windows) {
-        vec![home.join("Desktop"), home.join("Downloads"), home.to_path_buf()]
+        vec![
+            home.join("Desktop"),
+            home.join("Downloads"),
+            home.to_path_buf(),
+        ]
     } else {
-        vec![home.join("Desktop"), home.join("Downloads"), home.to_path_buf()]
+        vec![
+            home.join("Desktop"),
+            home.join("Downloads"),
+            home.to_path_buf(),
+        ]
     }
 }
 
@@ -129,7 +150,9 @@ fn ensure_prefix_allowed(home: &Path, prefix: &Path) -> Result<()> {
 
 fn path_contains_dir(dir: &Path) -> bool {
     env::var_os("PATH")
-        .map(|path| env::split_paths(&path).any(|entry| same_path_without_trailing_slash(&entry, dir)))
+        .map(|path| {
+            env::split_paths(&path).any(|entry| same_path_without_trailing_slash(&entry, dir))
+        })
         .unwrap_or(false)
 }
 
@@ -147,12 +170,16 @@ fn install_binary(src: &Path, dst: &Path) -> Result<()> {
     }
     let tmp = dst.with_file_name(format!(
         ".{}.{}",
-        dst.file_name().and_then(|name| name.to_str()).unwrap_or("lum"),
+        dst.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("lum"),
         std::process::id()
     ));
-    fs::copy(src, &tmp).with_context(|| format!("failed to copy {} to {}", src.display(), tmp.display()))?;
+    fs::copy(src, &tmp)
+        .with_context(|| format!("failed to copy {} to {}", src.display(), tmp.display()))?;
     set_executable(&tmp)?;
-    fs::rename(&tmp, dst).with_context(|| format!("failed to move {} to {}", tmp.display(), dst.display()))?;
+    fs::rename(&tmp, dst)
+        .with_context(|| format!("failed to move {} to {}", tmp.display(), dst.display()))?;
     Ok(())
 }
 
@@ -194,7 +221,11 @@ mod tests {
 
     #[test]
     fn preferred_dirs_match_installer_policy() {
-        let home = PathBuf::from(if cfg!(windows) { r"C:\Users\pun" } else { "/home/pun" });
+        let home = PathBuf::from(if cfg!(windows) {
+            r"C:\Users\pun"
+        } else {
+            "/home/pun"
+        });
         let dirs = preferred_dirs(&home);
         assert_eq!(dirs[0], home.join(".bio").join("bin"));
         assert_eq!(dirs[1], home.join(".local").join("bin"));
@@ -203,16 +234,27 @@ mod tests {
 
     #[test]
     fn prefix_must_be_inside_home() {
-        let home = PathBuf::from(if cfg!(windows) { r"C:\Users\pun" } else { "/home/pun" });
+        let home = PathBuf::from(if cfg!(windows) {
+            r"C:\Users\pun"
+        } else {
+            "/home/pun"
+        });
         assert!(ensure_prefix_allowed(&home, &home.join(".local")).is_ok());
-        let outside = if cfg!(windows) { PathBuf::from(r"C:\other") } else { PathBuf::from("/opt") };
+        let outside = if cfg!(windows) {
+            PathBuf::from(r"C:\other")
+        } else {
+            PathBuf::from("/opt")
+        };
         assert!(ensure_prefix_allowed(&home, &outside).is_err());
     }
 
-
     #[test]
     fn path_comparison_ignores_trailing_slashes() {
-        let base = if cfg!(windows) { PathBuf::from(r"C:\Users\pun\.local\bin") } else { PathBuf::from("/home/pun/.local/bin") };
+        let base = if cfg!(windows) {
+            PathBuf::from(r"C:\Users\pun\.local\bin")
+        } else {
+            PathBuf::from("/home/pun/.local/bin")
+        };
         let with_slash = PathBuf::from(format!("{}{}", base.display(), std::path::MAIN_SEPARATOR));
         assert!(same_path_without_trailing_slash(&base, &with_slash));
     }

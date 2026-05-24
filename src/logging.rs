@@ -1,15 +1,20 @@
-use std::{fs, path::{Path, PathBuf}, time::{Duration, SystemTime}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    time::{Duration, SystemTime},
+};
 
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 const RETENTION: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
 pub fn init() -> Result<WorkerGuard> {
     let log_dir = log_dir()?;
-    fs::create_dir_all(&log_dir).with_context(|| format!("failed to create log directory {}", log_dir.display()))?;
+    fs::create_dir_all(&log_dir)
+        .with_context(|| format!("failed to create log directory {}", log_dir.display()))?;
     cleanup_old_logs(&log_dir, SystemTime::now())?;
 
     let file_appender = tracing_appender::rolling::daily(&log_dir, "lum.log");
@@ -37,13 +42,16 @@ fn cleanup_old_logs(dir: &Path, now: SystemTime) -> Result<()> {
         return Ok(());
     }
 
-    for entry in fs::read_dir(dir).with_context(|| format!("failed to read log directory {}", dir.display()))? {
+    for entry in fs::read_dir(dir)
+        .with_context(|| format!("failed to read log directory {}", dir.display()))?
+    {
         let entry = entry?;
         let path = entry.path();
         let metadata = entry.metadata()?;
         let modified = metadata.modified()?;
         if should_delete_log_file(&path, modified, now) {
-            fs::remove_file(&path).with_context(|| format!("failed to remove old log {}", path.display()))?;
+            fs::remove_file(&path)
+                .with_context(|| format!("failed to remove old log {}", path.display()))?;
         }
     }
 

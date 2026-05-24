@@ -1,8 +1,14 @@
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use ringbuf::{traits::{Consumer, Producer, Split}, HeapCons, HeapProd, HeapRb};
+use ringbuf::{
+    HeapCons, HeapProd, HeapRb,
+    traits::{Consumer, Producer, Split},
+};
 
 pub const SAMPLE_RATE: u32 = 44_100;
 pub const CHANNELS: u16 = 2;
@@ -41,8 +47,12 @@ pub struct AudioPlayer {
 impl AudioPlayer {
     pub fn open() -> Result<Self> {
         let host = cpal::default_host();
-        let device = host.default_output_device().context("audio unavailable: no default output device")?;
-        let supported = device.default_output_config().context("audio unavailable: no default output config")?;
+        let device = host
+            .default_output_device()
+            .context("audio unavailable: no default output device")?;
+        let supported = device
+            .default_output_config()
+            .context("audio unavailable: no default output config")?;
         tracing::info!(config = ?supported, "default audio output config");
 
         if supported.sample_format() != cpal::SampleFormat::F32
@@ -57,11 +67,19 @@ impl AudioPlayer {
         let (producer, consumer) = rb.split();
         let producer = Arc::new(std::sync::Mutex::new(producer));
         let clear_requested = Arc::new(AtomicBool::new(false));
-        let writer = AudioWriter { producer, clear_requested: Arc::clone(&clear_requested) };
+        let writer = AudioWriter {
+            producer,
+            clear_requested: Arc::clone(&clear_requested),
+        };
         let stream = build_stream(&device, &config, consumer, clear_requested)?;
-        stream.play().context("audio unavailable: failed to start output stream")?;
+        stream
+            .play()
+            .context("audio unavailable: failed to start output stream")?;
 
-        Ok(Self { _stream: stream, writer })
+        Ok(Self {
+            _stream: stream,
+            writer,
+        })
     }
 
     pub fn writer(&self) -> AudioWriter {

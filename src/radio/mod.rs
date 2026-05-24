@@ -3,7 +3,10 @@ mod controls;
 mod decode;
 pub mod stations;
 
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use anyhow::{Context, Result};
 use tokio::task::JoinHandle;
@@ -20,7 +23,12 @@ pub async fn run(args: RadioArgs) -> Result<()> {
             Ok(())
         }
         Some(code) => {
-            let station = stations::find(&code).with_context(|| format!("station not found: {code}\n\n{}", stations::format_listing()))?;
+            let station = stations::find(&code).with_context(|| {
+                format!(
+                    "station not found: {code}\n\n{}",
+                    stations::format_listing()
+                )
+            })?;
             play(*station).await
         }
     }
@@ -28,15 +36,23 @@ pub async fn run(args: RadioArgs) -> Result<()> {
 
 async fn play(station: Station) -> Result<()> {
     let audio = AudioPlayer::open()?;
-    println!("Now playing\n  {:<4}  {}\n", station.code, station.description);
+    println!(
+        "Now playing\n  {:<4}  {}\n",
+        station.code, station.description
+    );
     println!("space/p pause · q/ctrl+c stop");
 
-    let raw = RawMode::enter().inspect_err(|error| tracing::warn!(error = %error, "keyboard unavailable"))?;
+    let raw = RawMode::enter()
+        .inspect_err(|error| tracing::warn!(error = %error, "keyboard unavailable"))?;
     let mut controls = controls::spawn_control_task();
 
     let mut paused = false;
     let mut stop = Arc::new(AtomicBool::new(false));
-    let mut task = Some(start_decode_task(station, audio.writer(), Arc::clone(&stop)));
+    let mut task = Some(start_decode_task(
+        station,
+        audio.writer(),
+        Arc::clone(&stop),
+    ));
 
     loop {
         tokio::select! {
@@ -88,6 +104,10 @@ async fn play(station: Station) -> Result<()> {
     Ok(())
 }
 
-fn start_decode_task(station: Station, writer: audio::AudioWriter, stop: Arc<AtomicBool>) -> JoinHandle<Result<()>> {
+fn start_decode_task(
+    station: Station,
+    writer: audio::AudioWriter,
+    stop: Arc<AtomicBool>,
+) -> JoinHandle<Result<()>> {
     tokio::task::spawn_blocking(move || decode::stream_station(station, writer, stop))
 }

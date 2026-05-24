@@ -37,6 +37,11 @@ pub enum Commands {
         #[command(subcommand)]
         command: FontCommand,
     },
+    /// Set system volume to default or specified level.
+    Vol {
+        /// Volume level (0–100). Omit to reset to OS default.
+        volume: Option<u16>,
+    },
 }
 
 #[derive(Debug, Args, Clone)]
@@ -196,7 +201,8 @@ mod tests {
             | Commands::Tools { .. }
             | Commands::Repos { .. }
             | Commands::Yt { .. }
-            | Commands::Font { .. } => {
+            | Commands::Font { .. }
+            | Commands::Vol { .. } => {
                 panic!("expected radio command")
             }
         }
@@ -211,7 +217,8 @@ mod tests {
             | Commands::Tools { .. }
             | Commands::Repos { .. }
             | Commands::Yt { .. }
-            | Commands::Font { .. } => {
+            | Commands::Font { .. }
+            | Commands::Vol { .. } => {
                 panic!("expected radio command")
             }
         }

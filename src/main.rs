@@ -5,6 +5,7 @@ mod logging;
 mod radio;
 mod repos;
 mod tools;
+mod vol;
 mod yt;
 
 use anyhow::Result;
@@ -31,5 +32,6 @@ async fn run() -> Result<()> {
         Commands::Tools { command } => tools::run(command),
         Commands::Yt { command } => yt::run(command).await,
         Commands::Font { command } => font::run(command),
+        Commands::Vol { volume } => vol::run(vol::VolArgs { volume }),
     }
 }

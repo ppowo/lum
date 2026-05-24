@@ -22,6 +22,12 @@ pub enum Commands {
         #[command(subcommand)]
         command: ReposCommand,
     },
+    /// Manage folder-based Git identities.
+    #[command(name = "git-id")]
+    GitId {
+        #[command(subcommand)]
+        command: GitIdCommand,
+    },
     /// Manage curated developer tools installed into lum's bin path.
     Tools {
         #[command(subcommand)]
@@ -123,6 +129,26 @@ pub enum ReposCommand {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum GitIdCommand {
+    /// Print the path to the git identity config file.
+    ConfigPath,
+    /// Create a sample git identity config file if none exists.
+    Init,
+    /// Synchronize the machine with the git identity config.
+    Sync,
+    /// Show status for all configured git identities.
+    Status,
+    /// Show which git identity applies to the current directory.
+    Where,
+    /// Show detailed information about one git identity.
+    Info { identity: String },
+    /// Print an identity public key to stdout.
+    Pubkey { identity: String },
+    /// Show files and folders managed by git-id.
+    Paths,
+}
+
+#[derive(Debug, Subcommand)]
 pub enum MirrorCommand {
     /// Print the path to the mirror config file.
     ConfigPath,
@@ -200,6 +226,7 @@ mod tests {
             Commands::Env { .. }
             | Commands::Tools { .. }
             | Commands::Repos { .. }
+            | Commands::GitId { .. }
             | Commands::Yt { .. }
             | Commands::Font { .. }
             | Commands::Vol { .. } => {
@@ -216,6 +243,7 @@ mod tests {
             Commands::Env { .. }
             | Commands::Tools { .. }
             | Commands::Repos { .. }
+            | Commands::GitId { .. }
             | Commands::Yt { .. }
             | Commands::Font { .. }
             | Commands::Vol { .. } => {

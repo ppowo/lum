@@ -27,5 +27,7 @@ fn vol_rejects_volume_above_100() {
         .args(["vol", "200"])
         .assert()
         .failure()
-        .stderr(predicates::str::contains("volume must be between 0 and 100"));
+        .stderr(predicates::str::contains(
+            "volume must be between 0 and 100",
+        ));
 }

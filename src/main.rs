@@ -1,6 +1,7 @@
 mod cli;
 mod env;
 mod font;
+mod git_id;
 mod logging;
 mod radio;
 mod repos;
@@ -29,6 +30,7 @@ async fn run() -> Result<()> {
         Commands::Radio(args) => radio::run(args).await,
         Commands::Repos { command } => repos::run(command),
         Commands::Env { command } => env::run(command),
+        Commands::GitId { command } => git_id::run(command),
         Commands::Tools { command } => tools::run(command),
         Commands::Yt { command } => yt::run(command).await,
         Commands::Font { command } => font::run(command),

@@ -1,6 +1,6 @@
 # lum
 
-`lum` is a small opinionated CLI toolbox for setting up shell environment variables, installing a curated set of developer tools, listening to a few internet radio stations, and checking local Git repositories.
+`lum` is a small opinionated CLI toolbox for setting up shell environment variables, installing a curated set of developer tools, listening to a few internet radio stations, checking local Git repositories, and managing folder-based Git identities.
 
 The most useful commands for new users are:
 
@@ -219,6 +219,23 @@ lum repos mirror config-path
 lum repos mirror sync
 lum repos mirror status
 ```
+
+### Git identities
+
+Manage folder-based Git author/SSH identities:
+
+```sh
+lum git-id init
+lum git-id config-path
+lum git-id sync
+lum git-id status
+lum git-id where
+lum git-id info <identity>
+lum git-id pubkey <identity>
+lum git-id paths
+```
+
+See `src/git_id/README.md` for config shape, ownership markers, generated files, and routing behavior.
 
 ## Build from source
 

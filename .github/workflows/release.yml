@@ -133,6 +133,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-edit
+        run: cargo install cargo-edit --locked
+
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
@@ -149,3 +155,14 @@ jobs:
             --title "lum v$VERSION" \
             --notes "Automated release from $GITHUB_SHA" \
             --target "$GITHUB_SHA"
+
+      - name: Commit version bump
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          cargo set-version "$VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock
+          git commit -m "chore: bump version to v$VERSION"
+          git push

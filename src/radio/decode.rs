@@ -82,6 +82,7 @@ pub fn stream_station(station: Station, writer: AudioWriter, stop: Arc<AtomicBoo
         .make_audio_decoder(params, &AudioDecoderOptions::default())
         .context("failed to create audio decoder")?;
     let mut samples = Vec::<f32>::new();
+    let mut normalizer = AudioNormalizer::new();
 
     while !stop.load(Ordering::Relaxed) {
         let packet = match format.next_packet() {
@@ -102,7 +103,7 @@ pub fn stream_station(station: Station, writer: AudioWriter, stop: Arc<AtomicBoo
             Ok(buffer) => {
                 samples.resize(buffer.samples_interleaved(), f32::MID);
                 buffer.copy_to_slice_interleaved(&mut samples);
-                let output = normalize_audio(buffer.spec(), &samples)?;
+                let output = normalizer.normalize(buffer.spec(), &samples)?;
                 writer.push_samples(&output, &stop);
             }
             Err(SymphoniaError::DecodeError(error)) => {
@@ -136,6 +137,8 @@ pub(crate) fn probe_station_decode(station: Station, packets_to_decode: usize) -
         .context("failed to create audio decoder")?;
     let mut decoded = 0;
 
+    let mut normalizer = AudioNormalizer::new();
+
     while decoded < packets_to_decode {
         let packet = match format.next_packet() {
             Ok(Some(packet)) => packet,
@@ -149,7 +152,7 @@ pub(crate) fn probe_station_decode(station: Station, packets_to_decode: usize) -
             Ok(buffer) => {
                 let mut samples = vec![f32::MID; buffer.samples_interleaved()];
                 buffer.copy_to_slice_interleaved(&mut samples);
-                let output = normalize_audio(buffer.spec(), &samples)?;
+                let output = normalizer.normalize(buffer.spec(), &samples)?;
                 if output.is_empty() {
                     bail!("station decoded empty audio packet");
                 }
@@ -198,63 +201,103 @@ fn open_station_format(station: Station) -> Result<Box<dyn FormatReader>> {
         .context("failed to detect stream format")
 }
 
+struct AudioNormalizer {
+    resampler: Option<StreamResampler>,
+}
+
+struct StreamResampler {
+    input_rate: u32,
+    input_channels: usize,
+    resampler: Async<f32>,
+}
+
+impl AudioNormalizer {
+    fn new() -> Self {
+        Self { resampler: None }
+    }
+
+    fn normalize(
+        &mut self,
+        spec: &symphonia::core::audio::AudioSpec,
+        interleaved: &[f32],
+    ) -> Result<Vec<f32>> {
+        let input_rate = spec.rate();
+        let input_channels = spec.channels().count();
+        if input_channels == 0 {
+            bail!("stream has no audio channels");
+        }
+
+        let samples = if input_rate == SAMPLE_RATE {
+            interleaved.to_vec()
+        } else {
+            self.resample_interleaved(interleaved, input_channels, input_rate, SAMPLE_RATE)?
+        };
+
+        match input_channels {
+            1 => {
+                let mut stereo = Vec::with_capacity(samples.len() * 2);
+                for sample in samples {
+                    stereo.push(sample);
+                    stereo.push(sample);
+                }
+                Ok(stereo)
+            }
+            2 => Ok(samples),
+            channels => bail!("stream has unsupported channel count: {channels}"),
+        }
+    }
+
+    fn resample_interleaved(
+        &mut self,
+        samples: &[f32],
+        channels: usize,
+        input_rate: u32,
+        output_rate: u32,
+    ) -> Result<Vec<f32>> {
+        let frames = samples.len() / channels;
+        if frames == 0 {
+            return Ok(Vec::new());
+        }
+
+        let recreate = self.resampler.as_ref().is_none_or(|stream| {
+            stream.input_rate != input_rate || stream.input_channels != channels
+        });
+        if recreate {
+            let ratio = output_rate as f64 / input_rate as f64;
+            self.resampler = Some(StreamResampler {
+                input_rate,
+                input_channels: channels,
+                resampler: Async::<f32>::new_poly(
+                    ratio,
+                    1.0,
+                    PolynomialDegree::Cubic,
+                    frames,
+                    channels,
+                    FixedAsync::Input,
+                )
+                .context("failed to create audio resampler")?,
+            });
+        }
+
+        let input = InterleavedSlice::new(samples, channels, frames)
+            .context("failed to adapt decoded audio for resampling")?;
+        Ok(self
+            .resampler
+            .as_mut()
+            .expect("resampler initialized")
+            .resampler
+            .process(&input, 0, None)
+            .context("failed to resample audio")?
+            .take_data())
+    }
+}
+
+#[cfg(test)]
 fn normalize_audio(
     spec: &symphonia::core::audio::AudioSpec,
     interleaved: &[f32],
 ) -> Result<Vec<f32>> {
-    let input_rate = spec.rate();
-    let input_channels = spec.channels().count();
-    if input_channels == 0 {
-        bail!("stream has no audio channels");
-    }
-
-    let samples = if input_rate == SAMPLE_RATE {
-        interleaved.to_vec()
-    } else {
-        resample_interleaved(interleaved, input_channels, input_rate, SAMPLE_RATE)?
-    };
-
-    match input_channels {
-        1 => {
-            let mut stereo = Vec::with_capacity(samples.len() * 2);
-            for sample in samples {
-                stereo.push(sample);
-                stereo.push(sample);
-            }
-            Ok(stereo)
-        }
-        2 => Ok(samples),
-        channels => bail!("stream has unsupported channel count: {channels}"),
-    }
-}
-
-fn resample_interleaved(
-    samples: &[f32],
-    channels: usize,
-    input_rate: u32,
-    output_rate: u32,
-) -> Result<Vec<f32>> {
-    let frames = samples.len() / channels;
-    if frames == 0 {
-        return Ok(Vec::new());
-    }
-
-    let input = InterleavedSlice::new(samples, channels, frames)
-        .context("failed to adapt decoded audio for resampling")?;
-    let ratio = output_rate as f64 / input_rate as f64;
-    let mut resampler = Async::<f32>::new_poly(
-        ratio,
-        1.0,
-        PolynomialDegree::Cubic,
-        frames,
-        channels,
-        FixedAsync::Input,
-    )
-    .context("failed to create audio resampler")?;
-    Ok(resampler
-        .process(&input, 0, None)
-        .context("failed to resample audio")?
-        .take_data())
+    AudioNormalizer::new().normalize(spec, interleaved)
 }
 
 #[cfg(test)]
@@ -288,5 +331,27 @@ mod tests {
         for frame in output.chunks_exact(2).take(16) {
             assert_eq!(frame[0], frame[1]);
         }
+    }
+
+    #[test]
+    fn resampling_preserves_filter_state_across_packets() {
+        use symphonia::core::audio::{AudioSpec, layouts::CHANNEL_LAYOUT_MONO};
+
+        let spec = AudioSpec::new(48_000, CHANNEL_LAYOUT_MONO);
+        let first_packet = vec![0.25; 2_048];
+        let second_packet = vec![0.25; 2_048];
+
+        let mut stream_normalizer = super::AudioNormalizer::new();
+        let first = stream_normalizer.normalize(&spec, &first_packet).unwrap();
+        let second = stream_normalizer.normalize(&spec, &second_packet).unwrap();
+
+        let mut stateless_normalizer = super::AudioNormalizer::new();
+        let stateless_second = stateless_normalizer
+            .normalize(&spec, &second_packet)
+            .unwrap();
+
+        assert_eq!(first.len() % 2, 0);
+        assert_eq!(second.len() % 2, 0);
+        assert_ne!(second, stateless_second);
     }
 }

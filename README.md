@@ -1,6 +1,6 @@
 # lum
 
-`lum` is a small personal CLI toolbox for setting up shell environment variables, installing a curated set of developer tools, listening to a few internet radio stations, and checking local Git repositories.
+`lum` is a small opinionated CLI toolbox for setting up shell environment variables, installing a curated set of developer tools, listening to a few internet radio stations, and checking local Git repositories.
 
 The most useful commands for new users are:
 

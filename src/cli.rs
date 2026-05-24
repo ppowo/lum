@@ -2,7 +2,7 @@ use crate::repos::scanner::ScanArgs;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
-#[command(name = "lum", version, about = "Personal CLI toolbox")]
+#[command(name = "lum", version, about = "Opinionated CLI toolbox")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,

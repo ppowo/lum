@@ -94,7 +94,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
 
       - name: Install cargo-edit
-        uses: taiki-e/install-action@cargo-edit
+        run: cargo install cargo-edit --locked
 
       - name: Set package version
         run: cargo set-version ${{ needs.version.outputs.version }}

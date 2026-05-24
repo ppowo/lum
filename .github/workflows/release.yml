@@ -22,31 +22,42 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Compute next odometer SemVer
         id: next
         shell: bash
         run: |
-          latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)"
-          latest="${latest#v}"
+          current="$(cargo pkgid | sed 's/.*@//')"
+          latest_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)"
+          latest="${latest_tag#v}"
 
-          if [ -z "$latest" ]; then
-            next="0.0.1"
-          else
-            IFS=. read -r major minor patch <<< "$latest"
+          base="$current"
+          if [ -n "$latest" ]; then
+            IFS=. read -r current_major current_minor current_patch <<< "$current"
+            IFS=. read -r latest_major latest_minor latest_patch <<< "$latest"
 
-            patch=$((patch + 1))
-            if [ "$patch" -gt 9 ]; then
-              patch=0
-              minor=$((minor + 1))
+            if [ "$latest_major" -gt "$current_major" ] || \
+               { [ "$latest_major" -eq "$current_major" ] && [ "$latest_minor" -gt "$current_minor" ]; } || \
+               { [ "$latest_major" -eq "$current_major" ] && [ "$latest_minor" -eq "$current_minor" ] && [ "$latest_patch" -gt "$current_patch" ]; }; then
+              base="$latest"
             fi
-
-            if [ "$minor" -gt 9 ]; then
-              minor=0
-              major=$((major + 1))
-            fi
-
-            next="$major.$minor.$patch"
           fi
+
+          IFS=. read -r major minor patch <<< "$base"
+          patch=$((patch + 1))
+          if [ "$patch" -gt 9 ]; then
+            patch=0
+            minor=$((minor + 1))
+          fi
+
+          if [ "$minor" -gt 9 ]; then
+            minor=0
+            major=$((major + 1))
+          fi
+
+          next="$major.$minor.$patch"
 
           echo "version=$next" >> "$GITHUB_OUTPUT"
           echo "tag=v$next" >> "$GITHUB_OUTPUT"

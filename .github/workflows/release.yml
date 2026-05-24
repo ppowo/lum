@@ -106,7 +106,7 @@ jobs:
         run: cargo install cargo-edit --locked
 
       - name: Set package version
-        run: cargo set-version ${{ needs.version.outputs.version }}
+        run: cargo set-version --package lum ${{ needs.version.outputs.version }}
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
@@ -160,9 +160,9 @@ jobs:
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          cargo set-version "$VERSION"
+          cargo set-version --package lum "$VERSION"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Cargo.toml Cargo.lock
+          git add Cargo.toml Cargo.lock xtask/Cargo.toml
           git commit -m "chore: bump version to v$VERSION"
           git push

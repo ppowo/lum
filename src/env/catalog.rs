@@ -6,13 +6,6 @@ pub(crate) const ALIASES: &[(&str, &str)] = &[
 ];
 
 pub(crate) const FORCED_ENV: &[(&str, &str)] = &[
-    ("PI_HASHLINE_GREP_MAX_LINES", "150"),
-    ("PI_HASHLINE_GREP_MAX_BYTES", "10000"),
-    ("PI_HASHLINE_BASH_CONTEXT_GUARD", "1"),
-    ("PI_HASHLINE_BASH_CONTEXT_GUARD_MAX_LINES", "400"),
-    ("PI_HASHLINE_BASH_CONTEXT_GUARD_MAX_BYTES", "25000"),
-    ("PI_HASHLINE_BASH_CONTEXT_GUARD_HEAD_LINES", "60"),
-    ("PI_HASHLINE_BASH_CONTEXT_GUARD_TAIL_LINES", "150"),
     ("npm_config_ignore_scripts", "true"),
 ];
 

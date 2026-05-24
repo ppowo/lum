@@ -68,8 +68,8 @@ fn env_list_masks_secret_values_and_shows_forced_defaults() {
         .success()
         .stdout(predicates::str::contains("OPENROUTER_API_KEY"))
         .stdout(predicates::str::contains("sk-o...cret"))
-        .stdout(predicates::str::contains("PI_HASHLINE_GREP_MAX_LINES"))
-        .stdout(predicates::str::contains("150"))
+        .stdout(predicates::str::contains("npm_config_ignore_scripts"))
+        .stdout(predicates::str::contains("true"))
         .stdout(predicates::str::contains("sk-or-v1-secret").not());
 }
 
@@ -82,7 +82,7 @@ fn env_init_can_emit_powershell_integration() {
         .assert()
         .success()
         .stdout(predicates::str::contains(
-            "$env:PI_HASHLINE_GREP_MAX_LINES = '150'",
+            "$env:npm_config_ignore_scripts = 'true'",
         ))
         .stdout(predicates::str::contains("function global:lum"))
         .stdout(predicates::str::contains(

@@ -1,0 +1,159 @@
+use std::{
+    fs,
+    io,
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
+
+use anyhow::{Context, Result};
+use flate2::read::GzDecoder;
+use sha2::{Digest, Sha256};
+use xz2::read::XzDecoder;
+
+use super::catalog::ToolSpec;
+use super::platform::{ArchiveType, Artifact};
+use super::state::{ArtifactState, ToolState, bin_dir, load_state, save_state, tool_path};
+
+pub(crate) fn install_artifact(
+    spec: &ToolSpec,
+    artifact: &Artifact,
+    preserve_installed_at: Option<SystemTime>,
+) -> Result<ToolState> {
+    fs::create_dir_all(bin_dir()?)?;
+    let target = tool_path(spec)?;
+    let temp_dir = tempfile::Builder::new().prefix("lum-tools-").tempdir()?;
+    let download = temp_dir.path().join(&artifact.asset_name);
+    download_artifact(&artifact.download_url, &download)?;
+    verify_sha256(&download, artifact.checksum_sha256.as_deref())?;
+    let source = materialize_binary(&download, temp_dir.path(), artifact)?;
+    install_file(&source, &target)?;
+
+    let mut stored = load_state()?;
+    let now = SystemTime::now();
+    let installed_at = preserve_installed_at
+        .or_else(|| stored.tools.get(spec.name).map(|s| s.installed_at))
+        .unwrap_or(now);
+    let tool_state = ToolState {
+        installed: true,
+        path: target,
+        installed_version: artifact.version.clone(),
+        installed_at,
+        updated_at: now,
+        artifact: ArtifactState {
+            release_tag: artifact.release_tag.clone(),
+            asset_name: artifact.asset_name.clone(),
+            download_url: artifact.download_url.clone(),
+            checksum: artifact.checksum_sha256.clone(),
+        },
+    };
+    stored.tools.insert(spec.name.to_owned(), tool_state);
+    save_state(&stored)?;
+    Ok(stored.tools.remove(spec.name).unwrap())
+}
+
+fn download_artifact(url: &str, dest: &Path) -> Result<()> {
+    let path = Path::new(url);
+    if path.exists() {
+        fs::copy(path, dest)?;
+        return Ok(());
+    }
+    let mut response = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .user_agent("lum-tools/1.0")
+        .build()?
+        .get(url)
+        .send()?
+        .error_for_status()?;
+    let mut out = fs::File::create(dest)?;
+    io::copy(&mut response, &mut out)?;
+    Ok(())
+}
+
+fn materialize_binary(download: &Path, temp_dir: &Path, artifact: &Artifact) -> Result<PathBuf> {
+    if artifact.archive_type == ArchiveType::Binary {
+        return Ok(download.to_owned());
+    }
+    let extract_dir = temp_dir.join("extract");
+    fs::create_dir_all(&extract_dir)?;
+    extract_archive(download, &extract_dir, artifact.archive_type)?;
+    let expected = extract_dir.join(Path::new(&artifact.binary_path));
+    if expected.is_file() {
+        return Ok(expected);
+    }
+    let basename = Path::new(&artifact.binary_path)
+        .file_name()
+        .context("artifact binary path missing filename")?;
+    find_file_named(&extract_dir, basename).with_context(|| {
+        format!(
+            "could not find {} in extracted archive",
+            artifact.binary_path
+        )
+    })
+}
+
+fn extract_archive(src: &Path, dest: &Path, archive_type: ArchiveType) -> Result<()> {
+    match archive_type {
+        ArchiveType::Zip => {
+            let file = fs::File::open(src)?;
+            zip::ZipArchive::new(file)?.extract(dest)?;
+        }
+        ArchiveType::TarGz => {
+            let file = fs::File::open(src)?;
+            tar::Archive::new(GzDecoder::new(file)).unpack(dest)?;
+        }
+        ArchiveType::TarXz => {
+            let file = fs::File::open(src)?;
+            tar::Archive::new(XzDecoder::new(file)).unpack(dest)?;
+        }
+        ArchiveType::Binary => {}
+    }
+    Ok(())
+}
+
+fn find_file_named(dir: &Path, filename: &std::ffi::OsStr) -> Result<PathBuf> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            if let Ok(found) = find_file_named(&path, filename) {
+                return Ok(found);
+            }
+        } else if path.file_name() == Some(filename) {
+            return Ok(path);
+        }
+    }
+    Err(anyhow::anyhow!("not found"))
+}
+
+fn install_file(source: &Path, target: &Path) -> Result<()> {
+    let temp = target.with_extension("lum-tmp");
+    fs::copy(source, &temp)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&temp, fs::Permissions::from_mode(0o755))?;
+    }
+    if cfg!(windows) && target.exists() {
+        fs::remove_file(target)?;
+    }
+    fs::rename(&temp, target).or_else(|_| {
+        fs::copy(&temp, target)?;
+        fs::remove_file(&temp)?;
+        Ok::<_, std::io::Error>(())
+    })?;
+    Ok(())
+}
+
+fn verify_sha256(path: &Path, expected: Option<&str>) -> Result<()> {
+    let Some(expected) = expected.filter(|s| !s.trim().is_empty()) else {
+        return Ok(());
+    };
+    let mut file = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    io::copy(&mut file, &mut hasher)?;
+    let actual = format!("{:x}", hasher.finalize());
+    if !actual.eq_ignore_ascii_case(expected.trim()) {
+        anyhow::bail!("checksum mismatch for {}", path.display());
+    }
+    Ok(())
+}

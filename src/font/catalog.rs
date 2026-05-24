@@ -18,12 +18,7 @@ pub(crate) fn lookup_font(name: &str) -> Result<&'static FontSpec> {
     CATALOG
         .iter()
         .find(|f| f.name == name)
-        .with_context(|| {
-            format!(
-                "unknown font {name:?} (available: {})",
-                available_fonts()
-            )
-        })
+        .with_context(|| format!("unknown font {name:?} (available: {})", available_fonts()))
 }
 
 pub(crate) fn available_fonts() -> String {

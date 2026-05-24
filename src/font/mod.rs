@@ -23,10 +23,7 @@ fn list() -> Result<()> {
         } else {
             "available"
         };
-        println!(
-            "{:<18} {:<12} {}",
-            font.name, label, font.description
-        );
+        println!("{:<18} {:<12} {}", font.name, label, font.description);
     }
     Ok(())
 }

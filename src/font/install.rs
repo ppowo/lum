@@ -9,26 +9,28 @@ use super::paths;
 
 pub(crate) fn install_font(spec: &FontSpec) -> Result<()> {
     let font_dir = paths::font_install_dir(spec)?;
+    let fonts_root = font_dir
+        .parent()
+        .context("font install directory has no parent")?;
+    fs::create_dir_all(fonts_root)?;
 
-    // If reinstalling, remove the old directory first
-    if font_dir.exists() {
-        fs::remove_dir_all(&font_dir)?;
-    }
-
-    // Create the font install directory
-    fs::create_dir_all(&font_dir)?;
-
-    // Download to a temp directory
+    // Stage the download and extracted files beside the final destination so a
+    // failed download/extract does not destroy an existing installation.
     let temp_dir = tempfile::Builder::new()
-        .prefix("lum-font-")
-        .tempdir()?;
+        .prefix(".lum-font-")
+        .tempdir_in(fonts_root)?;
     let zip_path = temp_dir.path().join("font.zip");
+    let staging_dir = temp_dir.path().join("staging");
+    fs::create_dir_all(&staging_dir)?;
 
     let url = test_artifact_url(spec).unwrap_or_else(|| spec.download_url.to_owned());
     download_font(&url, &zip_path)?;
+    extract_ttf_files(&zip_path, &staging_dir)?;
 
-    // Extract zip into the font directory
-    extract_ttf_files(&zip_path, &font_dir)?;
+    if font_dir.exists() {
+        fs::remove_dir_all(&font_dir)?;
+    }
+    fs::rename(&staging_dir, &font_dir)?;
 
     // Refresh font cache (best effort)
     paths::refresh_font_cache();

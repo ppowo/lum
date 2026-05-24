@@ -172,6 +172,53 @@ fn font_install_force_reinstalls() {
 }
 
 #[test]
+fn font_install_force_preserves_existing_install_when_new_archive_is_bad() {
+    let home = TempDir::new().unwrap();
+    let zip_path = create_test_font_zip(home.path());
+    let bad_zip_path = home.path().join("bad-font.zip");
+    std::fs::write(&bad_zip_path, "not a zip").unwrap();
+
+    lum_with_env(&home)
+        .env("LUM_FONT_TEST_ARTIFACT_DMCA_SANS_SERIF", &zip_path)
+        .args(["font", "install", "dmca-sans-serif"])
+        .assert()
+        .success();
+
+    lum_with_env(&home)
+        .env("LUM_FONT_TEST_ARTIFACT_DMCA_SANS_SERIF", &bad_zip_path)
+        .args(["font", "install", "dmca-sans-serif", "--force"])
+        .assert()
+        .failure();
+
+    let font_dir = home
+        .path()
+        .join("data")
+        .join("fonts")
+        .join("dmca-sans-serif");
+    assert!(font_dir.join("FakeFont-Regular.ttf").exists());
+}
+
+#[test]
+fn font_install_failure_does_not_leave_installed_marker() {
+    let home = TempDir::new().unwrap();
+    let bad_zip_path = home.path().join("bad-font.zip");
+    std::fs::write(&bad_zip_path, "not a zip").unwrap();
+
+    lum_with_env(&home)
+        .env("LUM_FONT_TEST_ARTIFACT_DMCA_SANS_SERIF", &bad_zip_path)
+        .args(["font", "install", "dmca-sans-serif"])
+        .assert()
+        .failure();
+
+    let font_dir = home
+        .path()
+        .join("data")
+        .join("fonts")
+        .join("dmca-sans-serif");
+    assert!(!font_dir.exists());
+}
+
+#[test]
 fn font_uninstall_removes_font_directory() {
     let home = TempDir::new().unwrap();
     let zip_path = create_test_font_zip(home.path());

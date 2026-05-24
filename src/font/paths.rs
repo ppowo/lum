@@ -52,6 +52,6 @@ pub(crate) fn refresh_font_cache() {
     if cfg!(unix) {
         let _ = std::process::Command::new("fc-cache")
             .args(["-f", "-v"])
-            .spawn();
+            .status();
     }
 }

@@ -1,3 +1,4 @@
+mod backup;
 mod cli;
 mod env;
 mod font;
@@ -33,6 +34,7 @@ async fn run() -> Result<()> {
             clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
             Ok(())
         }
+        Commands::Backup { command } => backup::run(command),
         Commands::Radio(args) => radio::run(args).await,
         Commands::Repos { command } => repos::run(command),
         Commands::Env { command } => env::run(command),

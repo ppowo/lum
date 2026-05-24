@@ -16,6 +16,11 @@ pub enum Commands {
     Completions { shell: Shell },
     /// Listen to internet radio stations.
     Radio(RadioArgs),
+    /// Backup and restore directories.
+    Backup {
+        #[command(subcommand)]
+        command: BackupCommand,
+    },
     /// Manage shell environment variables and lum's bin path.
     Env {
         #[command(subcommand)]
@@ -58,6 +63,14 @@ pub enum Commands {
 pub struct RadioArgs {
     /// Station code to play. Omit to list stations.
     pub station: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum BackupCommand {
+    /// Backup and restore ~/.bio.
+    Bio { code: Option<String> },
+    /// Backup and restore OpenEmu data.
+    Openemu { code: Option<String> },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -227,7 +240,8 @@ mod tests {
         let cli = Cli::parse_from(["lum", "radio"]);
         match cli.command {
             Commands::Radio(args) => assert_eq!(args.station, None),
-            Commands::Env { .. }
+            Commands::Backup { .. }
+            | Commands::Env { .. }
             | Commands::Completions { .. }
             | Commands::Tools { .. }
             | Commands::Repos { .. }
@@ -245,7 +259,8 @@ mod tests {
         let cli = Cli::parse_from(["lum", "radio", "atma"]);
         match cli.command {
             Commands::Radio(args) => assert_eq!(args.station.as_deref(), Some("atma")),
-            Commands::Env { .. }
+            Commands::Backup { .. }
+            | Commands::Env { .. }
             | Commands::Completions { .. }
             | Commands::Tools { .. }
             | Commands::Repos { .. }

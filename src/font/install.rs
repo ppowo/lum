@@ -25,7 +25,7 @@ pub(crate) fn install_font(spec: &FontSpec) -> Result<()> {
 
     let url = test_artifact_url(spec).unwrap_or_else(|| spec.download_url.to_owned());
     download_font(&url, &zip_path)?;
-    extract_ttf_files(&zip_path, &staging_dir)?;
+    extract_ttf_files(spec, &zip_path, &staging_dir)?;
 
     if font_dir.exists() {
         fs::remove_dir_all(&font_dir)?;
@@ -67,7 +67,7 @@ fn download_font(url: &str, dest: &Path) -> Result<()> {
     Ok(())
 }
 
-fn extract_ttf_files(zip_path: &Path, dest: &Path) -> Result<()> {
+fn extract_ttf_files(spec: &FontSpec, zip_path: &Path, dest: &Path) -> Result<()> {
     let file = fs::File::open(zip_path)?;
     let mut archive = zip::ZipArchive::new(file)?;
 
@@ -85,6 +85,15 @@ fn extract_ttf_files(zip_path: &Path, dest: &Path) -> Result<()> {
         let file_name = Path::new(&name)
             .file_name()
             .context(format!("zip entry has no filename: {name}"))?;
+        let file_name_str = file_name.to_string_lossy();
+
+        if spec
+            .excluded_files
+            .iter()
+            .any(|excluded| file_name_str.eq_ignore_ascii_case(excluded))
+        {
+            continue;
+        }
 
         let out_path = dest.join(file_name);
 

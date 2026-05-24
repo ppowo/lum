@@ -26,6 +26,14 @@ fn create_test_font_zip(dir: &std::path::Path) -> std::path::PathBuf {
         .unwrap();
     writer.write_all(b"fake-ttf-bold").unwrap();
 
+    // DMCA upstream includes compatibility aliases that must not be installed,
+    // otherwise they shadow real Windows Arial/Tahoma in fontconfig.
+    writer.start_file("Arial.ttf", options).unwrap();
+    writer.write_all(b"fake-dmca-Arial-alias").unwrap();
+
+    writer.start_file("Tahoma.ttf", options).unwrap();
+    writer.write_all(b"fake-dmca-Tahoma-alias").unwrap();
+
     // Include a non-TTF file that should be skipped
     writer.start_file("readme.txt", options).unwrap();
     writer.write_all(b"not a font").unwrap();
@@ -117,6 +125,8 @@ fn font_install_downloads_and_extracts_ttf_files() {
         .join("dmca-sans-serif");
     assert!(font_dir.join("FakeFont-Regular.ttf").exists());
     assert!(font_dir.join("FakeFont-Bold.ttf").exists());
+    assert!(!font_dir.join("Arial.ttf").exists());
+    assert!(!font_dir.join("Tahoma.ttf").exists());
     assert!(!font_dir.join("readme.txt").exists());
     assert!(!font_dir.join("subdir").exists());
 

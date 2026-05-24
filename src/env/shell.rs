@@ -33,7 +33,15 @@ lum() {{
   else
     command lum "$@"
   fi
-}}"#,
+}}
+
+# --- lum shell completion ---
+if [ -n "$BASH_VERSION" ]; then
+  eval "$(command lum __completions bash)"
+elif [ -n "$ZSH_VERSION" ]; then
+  eval "$(command lum __completions zsh)"
+fi
+# --- end lum shell completion ---"#,
         bin = bin.display(),
         quoted_bin = quoted_bin
     );
@@ -61,7 +69,11 @@ function global:lum {{
   }} else {{
     & lum.exe @args
   }}
-}}"#,
+}}
+
+# --- lum shell completion ---
+Invoke-Expression (& lum.exe __completions powershell | Out-String)
+# --- end lum shell completion ---"#,
         bin = bin
     );
 }

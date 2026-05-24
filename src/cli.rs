@@ -1,5 +1,6 @@
 use crate::repos::scanner::ScanArgs;
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap_complete::Shell;
 
 #[derive(Debug, Parser)]
 #[command(name = "lum", version, about = "Opinionated CLI toolbox")]
@@ -10,6 +11,9 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
+    /// Generate shell completions.
+    #[command(name = "__completions", hide = true)]
+    Completions { shell: Shell },
     /// Listen to internet radio stations.
     Radio(RadioArgs),
     /// Manage shell environment variables and lum's bin path.
@@ -224,6 +228,7 @@ mod tests {
         match cli.command {
             Commands::Radio(args) => assert_eq!(args.station, None),
             Commands::Env { .. }
+            | Commands::Completions { .. }
             | Commands::Tools { .. }
             | Commands::Repos { .. }
             | Commands::GitId { .. }
@@ -241,6 +246,7 @@ mod tests {
         match cli.command {
             Commands::Radio(args) => assert_eq!(args.station.as_deref(), Some("atma")),
             Commands::Env { .. }
+            | Commands::Completions { .. }
             | Commands::Tools { .. }
             | Commands::Repos { .. }
             | Commands::GitId { .. }

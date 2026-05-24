@@ -208,4 +208,18 @@ mod tests {
         let outside = if cfg!(windows) { PathBuf::from(r"C:\other") } else { PathBuf::from("/opt") };
         assert!(ensure_prefix_allowed(&home, &outside).is_err());
     }
+
+
+    #[test]
+    fn path_comparison_ignores_trailing_slashes() {
+        let base = if cfg!(windows) { PathBuf::from(r"C:\Users\pun\.local\bin") } else { PathBuf::from("/home/pun/.local/bin") };
+        let with_slash = PathBuf::from(format!("{}{}", base.display(), std::path::MAIN_SEPARATOR));
+        assert!(same_path_without_trailing_slash(&base, &with_slash));
+    }
+
+    #[test]
+    fn binary_name_uses_windows_extension_only_on_windows() {
+        let expected = if cfg!(windows) { "lum.exe" } else { "lum" };
+        assert_eq!(binary_name("lum"), expected);
+    }
 }

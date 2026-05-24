@@ -210,5 +210,20 @@ mod tests {
                 .unwrap_or_else(|error| panic!("{} failed decode compatibility probe: {error:#}", station.code));
             assert!(decoded > 0, "{} decoded no audio packets", station.code);
         }
-}
+    }
+
+    #[test]
+    fn normalizes_mono_low_rate_audio_to_stereo_output() {
+        use symphonia::core::audio::{layouts::CHANNEL_LAYOUT_MONO, AudioSpec};
+
+        let spec = AudioSpec::new(22_050, CHANNEL_LAYOUT_MONO);
+        let mono = vec![0.5; 1_024];
+        let output = super::normalize_audio(&spec, &mono).unwrap();
+
+        assert_eq!(output.len() % 2, 0);
+        assert!(output.len() > mono.len());
+        for frame in output.chunks_exact(2).take(16) {
+            assert_eq!(frame[0], frame[1]);
+        }
+    }
 }

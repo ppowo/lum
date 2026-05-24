@@ -47,4 +47,14 @@ mod tests {
         assert_eq!(find("atma").unwrap().url, "https://atma.fm/channel1");
         assert!(find("ATMA").is_none());
     }
+
+
+    #[test]
+    fn listing_matches_ruv_plain_format() {
+        let listing = format_listing();
+        assert!(listing.starts_with("atma  atma.fm Channel 1"));
+        assert!(listing.contains("\nssom  SomaFM Space Station Soma"));
+        assert!(listing.ends_with("arab  Arab Mix FM - Arabic music stream replacement for Radio Alhara"));
+        assert_eq!(listing.lines().count(), all().len());
+    }
 }

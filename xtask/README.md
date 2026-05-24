@@ -42,6 +42,18 @@ Fallback installs warn because the installed command may not be directly runnabl
 
 With `PREFIX`, install to `PREFIX/bin`. `PREFIX` must be absolute, inside the user's home directory, and `PREFIX/bin` must already appear in `PATH`.
 
+## Windows Behavior
+
+On Windows, the same preferred user-bin names are checked under `%USERPROFILE%`:
+
+1. `%USERPROFILE%\.bio\bin`
+2. `%USERPROFILE%\.local\bin`
+3. `%USERPROFILE%\bin`
+
+These are usually not present in `PATH` on a default Windows machine. In that case, `cargo local-install` intentionally falls back to Desktop, Downloads, or the home directory and prints warnings that the command may not be directly runnable.
+
+Do not change the installer to use `Program Files`, require administrator privileges, or edit the user's `PATH` automatically.
+
 ## Rules
 
 - Do not use sudo or system install directories.

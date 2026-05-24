@@ -40,17 +40,19 @@ fn cleanup_old_logs(dir: &Path, now: SystemTime) -> Result<()> {
     for entry in fs::read_dir(dir).with_context(|| format!("failed to read log directory {}", dir.display()))? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().and_then(|ext| ext.to_str()) != Some("log") {
-            continue;
-        }
         let metadata = entry.metadata()?;
         let modified = metadata.modified()?;
-        if now.duration_since(modified).unwrap_or_default() > RETENTION {
+        if should_delete_log_file(&path, modified, now) {
             fs::remove_file(&path).with_context(|| format!("failed to remove old log {}", path.display()))?;
         }
     }
 
     Ok(())
+}
+
+fn should_delete_log_file(path: &Path, modified: SystemTime, now: SystemTime) -> bool {
+    path.extension().and_then(|ext| ext.to_str()) == Some("log")
+        && now.duration_since(modified).unwrap_or_default() > RETENTION
 }
 
 #[cfg(test)]
@@ -60,5 +62,16 @@ mod tests {
     #[test]
     fn log_dir_ends_with_logs() {
         assert_eq!(log_dir().unwrap().file_name().unwrap(), "logs");
+    }
+
+    #[test]
+    fn retention_deletes_only_log_files_older_than_seven_days() {
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(10 * 24 * 60 * 60);
+        let old = SystemTime::UNIX_EPOCH;
+        let fresh = now - Duration::from_secs(60);
+
+        assert!(should_delete_log_file(Path::new("lum.log"), old, now));
+        assert!(!should_delete_log_file(Path::new("lum.log"), fresh, now));
+        assert!(!should_delete_log_file(Path::new("notes.txt"), old, now));
     }
 }

@@ -273,6 +273,26 @@ fn mirror_list_reports_no_config() {
         .stdout(predicates::str::contains("not found"));
 }
 
+#[test]
+fn mirror_sync_reports_json_parse_details() {
+    let home = TempDir::new().unwrap();
+    let config_dir = home.path().join("config").join("lum");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    std::fs::write(
+        config_dir.join("repos.json"),
+        r#"{"repos":[{"url":"https://github.com/example/one.git"}]"#,
+    )
+    .unwrap();
+
+    lum_with_xdg(&home)
+        .args(["repos", "mirror", "sync"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("parsing"))
+        .stderr(predicates::str::contains("repos.json"))
+        .stderr(predicates::str::contains("EOF"));
+}
+
 fn write_mirror_config(home: &TempDir, repos: &[(&str, &str)]) {
     let config_dir = home.path().join("config").join("lum");
     std::fs::create_dir_all(&config_dir).unwrap();

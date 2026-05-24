@@ -12,7 +12,7 @@ use cli::{Cli, Commands};
 #[tokio::main]
 async fn main() {
     if let Err(error) = run().await {
-        eprintln!("{error}");
+        eprintln!("{error:#}");
         tracing::error!(error = ?error, "command failed");
         std::process::exit(1);
     }

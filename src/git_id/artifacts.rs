@@ -83,15 +83,14 @@ where
     for entry in std::fs::read_dir(&home)? {
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().to_string();
-        if let Some(identity_name) = name.strip_prefix(".gitconfig-lum-git-id-") {
-            if !active.contains(identity_name)
+        if let Some(identity_name) = name.strip_prefix(".gitconfig-lum-git-id-")
+            && !active.contains(identity_name)
                 && is_lum_managed_file(
                     &entry.path(),
                     &format!("# lum:git-id:managed identity={identity_name}"),
                 )?
-            {
-                backup_and_remove(&[entry.path()])?;
-            }
+        {
+            backup_and_remove(&[entry.path()])?;
         }
     }
     let _ = identity_git_config_path;

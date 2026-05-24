@@ -1,23 +1,22 @@
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
-use std::path::{Path, PathBuf};
 
 use crate::cli::GitIdCommand;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Identity {
-    pub name: String,
-    pub author_name: String,
-    pub email: String,
-    pub domain: String,
-    pub folders: Vec<String>,
-}
+#[path = "git_id/artifacts.rs"]
+mod artifacts;
+#[path = "git_id/config.rs"]
+mod config;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GitIdentitiesConfig {
-    pub identities: Vec<Identity>,
-}
+use artifacts::{
+    cleanup_old_backups, cleanup_orphan_identity_configs, cleanup_orphan_key_pairs,
+    is_lum_managed_file, replace_marked_section,
+};
+pub use config::config_path;
+use config::{
+    GitIdentitiesConfig, Identity, allowed_signers_path, data_dir, detect_identity, expand_path,
+    git_path, home_path, identity_git_config_path, identity_private_key_path,
+    identity_public_key_path, load_config, normalize_path,
+};
 
 pub fn run(command: GitIdCommand) -> Result<()> {
     match command {
@@ -33,18 +32,6 @@ pub fn run(command: GitIdCommand) -> Result<()> {
         GitIdCommand::Pubkey { identity } => pubkey(&identity),
         GitIdCommand::Paths => paths(),
     }
-}
-
-pub fn config_path() -> Result<PathBuf> {
-    let dirs = directories::ProjectDirs::from("", "", "lum")
-        .ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
-    Ok(dirs.config_dir().join("git-identities.json"))
-}
-
-fn data_dir() -> Result<PathBuf> {
-    let dirs = directories::ProjectDirs::from("", "", "lum")
-        .ok_or_else(|| anyhow::anyhow!("cannot determine data directory"))?;
-    Ok(dirs.data_dir().join("git-id"))
 }
 
 fn init() -> Result<()> {
@@ -70,74 +57,6 @@ fn init() -> Result<()> {
     Ok(())
 }
 
-fn load_config() -> Result<Vec<Identity>> {
-    let path = config_path()?;
-    let content =
-        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
-    let config: GitIdentitiesConfig =
-        serde_json::from_str(&content).with_context(|| format!("parsing {}", path.display()))?;
-    validate(&config.identities)?;
-    Ok(config.identities)
-}
-
-fn validate(identities: &[Identity]) -> Result<()> {
-    let mut names = HashSet::new();
-    let mut folders = HashSet::new();
-    let mut email_domains = HashSet::new();
-    let mut author_domains = HashSet::new();
-
-    for identity in identities {
-        if identity.name.trim().is_empty() {
-            anyhow::bail!("identity name must not be empty");
-        }
-        if !names.insert(identity.name.clone()) {
-            anyhow::bail!("duplicate identity name: {}", identity.name);
-        }
-        if identity.author_name.trim().is_empty() {
-            anyhow::bail!("identity {}: author_name must not be empty", identity.name);
-        }
-        if identity.email.trim().is_empty() {
-            anyhow::bail!("identity {}: email must not be empty", identity.name);
-        }
-        if identity.domain.trim().is_empty() {
-            anyhow::bail!("identity {}: domain must not be empty", identity.name);
-        }
-        if identity.folders.is_empty() {
-            anyhow::bail!(
-                "identity {}: at least one folder is required",
-                identity.name
-            );
-        }
-        let email_domain = (identity.email.clone(), identity.domain.clone());
-        if !email_domains.insert(email_domain) {
-            anyhow::bail!(
-                "duplicate email+domain: {} on {}",
-                identity.email,
-                identity.domain
-            );
-        }
-        let author_domain = (identity.author_name.clone(), identity.domain.clone());
-        if !author_domains.insert(author_domain) {
-            anyhow::bail!(
-                "duplicate author_name+domain: {} on {}",
-                identity.author_name,
-                identity.domain
-            );
-        }
-        for folder in &identity.folders {
-            if folder.trim().is_empty() {
-                anyhow::bail!("identity {}: folder must not be empty", identity.name);
-            }
-            let expanded = expand_path(folder);
-            let normalized = normalize_path(&expanded);
-            if !folders.insert(normalized) {
-                anyhow::bail!("duplicate managed folder: {}", folder);
-            }
-        }
-    }
-    Ok(())
-}
-
 fn where_am_i() -> Result<()> {
     let identities = load_config()?;
     let cwd = std::env::current_dir()?;
@@ -148,57 +67,6 @@ fn where_am_i() -> Result<()> {
     println!("Email:    {}", identity.email);
     println!("Domain:   {}", identity.domain);
     Ok(())
-}
-
-fn detect_identity<'a>(identities: &'a [Identity], dir: &Path) -> Option<&'a Identity> {
-    let dir = normalize_path(dir);
-    identities
-        .iter()
-        .filter_map(|identity| {
-            identity
-                .folders
-                .iter()
-                .map(|folder| normalize_path(&expand_path(folder)))
-                .filter(|folder| is_path_prefix(folder, &dir))
-                .map(|folder| (folder.components().count(), identity))
-                .max_by_key(|(len, _)| *len)
-        })
-        .max_by_key(|(len, _)| *len)
-        .map(|(_, identity)| identity)
-}
-
-fn is_path_prefix(prefix: &Path, path: &Path) -> bool {
-    path == prefix || path.starts_with(prefix)
-}
-
-fn expand_path(path: &str) -> PathBuf {
-    if let Some(rest) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(rest);
-        }
-    }
-    PathBuf::from(path)
-}
-
-fn normalize_path(path: &Path) -> PathBuf {
-    path.components().collect()
-}
-
-fn identity_private_key_path(identity: &Identity) -> Result<PathBuf> {
-    Ok(dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
-        .join(".ssh")
-        .join(format!("lum-git-id-{}", identity.name)))
-}
-
-fn identity_public_key_path(identity: &Identity) -> Result<PathBuf> {
-    Ok(identity_private_key_path(identity)?.with_extension("pub"))
-}
-
-fn identity_git_config_path(identity: &Identity) -> Result<PathBuf> {
-    Ok(dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
-        .join(format!(".gitconfig-lum-git-id-{}", identity.name)))
 }
 
 fn sync() -> Result<()> {
@@ -217,7 +85,7 @@ fn sync() -> Result<()> {
     write_global_git_config(&identities)?;
     write_ssh_config(&identities)?;
     write_allowed_signers(&identities)?;
-    cleanup_orphan_identity_configs(&identities)?;
+    cleanup_orphan_identity_configs(&identities, identity_git_config_path)?;
     cleanup_orphan_key_pairs(&identities)?;
 
     if !failures.is_empty() {
@@ -273,7 +141,7 @@ fn ensure_key_pair(identity: &Identity) -> Result<()> {
     Ok(())
 }
 
-fn ensure_lum_managed_key(identity: &Identity, public_key: &Path) -> Result<()> {
+fn ensure_lum_managed_key(identity: &Identity, public_key: &std::path::Path) -> Result<()> {
     let marker = format!("[lum:git-id identity={}]", identity.name);
     let content = std::fs::read_to_string(public_key)
         .with_context(|| format!("reading public key {}", public_key.display()))?;
@@ -320,8 +188,6 @@ fn write_identity_git_config(identity: &Identity) -> Result<()> {
 
 fn write_global_git_config(identities: &[Identity]) -> Result<()> {
     let path = home_path(".gitconfig")?;
-    let existing = read_optional(&path)?;
-    let stripped = strip_marked_section(&existing, "# lum:git-id:begin", "# lum:git-id:end");
     let mut entries: Vec<_> = identities
         .iter()
         .flat_map(|identity| {
@@ -346,8 +212,7 @@ fn write_global_git_config(identities: &[Identity]) -> Result<()> {
         ));
     }
     section.push_str("# lum:git-id:end\n");
-    std::fs::write(path, append_managed_section(&stripped, &section))?;
-    Ok(())
+    replace_marked_section(&path, "# lum:git-id:begin", "# lum:git-id:end", &section)
 }
 
 fn write_ssh_config(identities: &[Identity]) -> Result<()> {
@@ -355,9 +220,7 @@ fn write_ssh_config(identities: &[Identity]) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let existing = read_optional(&path)?;
-    let stripped = strip_marked_section(&existing, "# lum:git-id:begin", "# lum:git-id:end");
-    let mut seen = HashSet::new();
+    let mut seen = std::collections::HashSet::new();
     let mut section = String::from("# lum:git-id:begin\n");
     for identity in identities {
         if seen.insert(identity.domain.clone()) {
@@ -370,8 +233,7 @@ fn write_ssh_config(identities: &[Identity]) -> Result<()> {
         }
     }
     section.push_str("# lum:git-id:end\n");
-    std::fs::write(path, append_managed_section(&stripped, &section))?;
-    Ok(())
+    replace_marked_section(&path, "# lum:git-id:begin", "# lum:git-id:end", &section)
 }
 
 fn write_allowed_signers(identities: &[Identity]) -> Result<()> {
@@ -379,8 +241,6 @@ fn write_allowed_signers(identities: &[Identity]) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let existing = read_optional(&path)?;
-    let stripped = strip_marked_section(&existing, "# lum:git-id:begin", "# lum:git-id:end");
     let mut section = String::from("# lum:git-id:begin\n");
     for identity in identities {
         let public_key = identity_public_key_path(identity)?;
@@ -392,174 +252,7 @@ fn write_allowed_signers(identities: &[Identity]) -> Result<()> {
         }
     }
     section.push_str("# lum:git-id:end\n");
-    std::fs::write(path, append_managed_section(&stripped, &section))?;
-    Ok(())
-}
-
-fn allowed_signers_path() -> Result<PathBuf> {
-    home_path(".ssh/allowed_signers")
-}
-
-fn home_path(relative: &str) -> Result<PathBuf> {
-    Ok(dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
-        .join(relative))
-}
-
-fn read_optional(path: &Path) -> Result<String> {
-    match std::fs::read_to_string(path) {
-        Ok(content) => Ok(content),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
-        Err(error) => Err(error.into()),
-    }
-}
-
-fn strip_marked_section(content: &str, begin: &str, end: &str) -> String {
-    let mut output = String::new();
-    let mut in_section = false;
-    for line in content.lines() {
-        if line.trim() == begin {
-            in_section = true;
-            continue;
-        }
-        if line.trim() == end {
-            in_section = false;
-            continue;
-        }
-        if !in_section {
-            output.push_str(line);
-            output.push('\n');
-        }
-    }
-    output
-}
-
-fn append_managed_section(existing_without_section: &str, section: &str) -> String {
-    let existing = existing_without_section.trim_end();
-    if existing.is_empty() {
-        section.to_string()
-    } else {
-        format!("{existing}\n\n{section}")
-    }
-}
-
-fn is_lum_managed_file(path: &Path, marker: &str) -> Result<bool> {
-    Ok(read_optional(path)?.starts_with(marker))
-}
-
-fn git_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
-
-fn cleanup_old_backups() -> Result<()> {
-    let backup_dir = data_dir()?.join("backups");
-    if !backup_dir.exists() {
-        return Ok(());
-    }
-    let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(30 * 24 * 60 * 60);
-    for entry in std::fs::read_dir(backup_dir)? {
-        let entry = entry?;
-        let metadata = entry.metadata()?;
-        if metadata.modified().unwrap_or(std::time::SystemTime::now()) < cutoff {
-            let _ = std::fs::remove_file(entry.path());
-        }
-    }
-    Ok(())
-}
-
-fn cleanup_orphan_identity_configs(identities: &[Identity]) -> Result<()> {
-    let home =
-        dirs::home_dir().ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?;
-    let active: HashSet<_> = identities
-        .iter()
-        .map(|identity| identity.name.clone())
-        .collect();
-    for entry in std::fs::read_dir(&home)? {
-        let entry = entry?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        if let Some(identity_name) = name.strip_prefix(".gitconfig-lum-git-id-") {
-            if !active.contains(identity_name)
-                && is_lum_managed_file(
-                    &entry.path(),
-                    &format!("# lum:git-id:managed identity={identity_name}"),
-                )?
-            {
-                backup_and_remove(&[entry.path()])?;
-            }
-        }
-    }
-    Ok(())
-}
-
-fn cleanup_orphan_key_pairs(identities: &[Identity]) -> Result<()> {
-    let ssh_dir = home_path(".ssh")?;
-    if !ssh_dir.exists() {
-        return Ok(());
-    }
-    let active: HashSet<_> = identities
-        .iter()
-        .map(|identity| identity.name.clone())
-        .collect();
-    for entry in std::fs::read_dir(&ssh_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        let Some(identity_name) = file_name
-            .strip_prefix("lum-git-id-")
-            .and_then(|name| name.strip_suffix(".pub"))
-        else {
-            continue;
-        };
-        if active.contains(identity_name) {
-            continue;
-        }
-        let marker = format!("[lum:git-id identity={identity_name}]");
-        let content = read_optional(&path)?;
-        if !content.contains(&marker) {
-            continue;
-        }
-        let private_key = ssh_dir.join(format!("lum-git-id-{identity_name}"));
-        let mut paths = vec![path];
-        if private_key.exists() {
-            paths.push(private_key);
-        }
-        backup_and_remove(&paths)?;
-    }
-    Ok(())
-}
-
-fn backup_and_remove(paths: &[PathBuf]) -> Result<()> {
-    if paths.is_empty() {
-        return Ok(());
-    }
-    let backup_dir = data_dir()?.join("backups");
-    std::fs::create_dir_all(&backup_dir)?;
-    let timestamp = chrono_like_timestamp();
-    let backup_path = backup_dir.join(format!("git-id-orphans-{timestamp}.tar.gz"));
-    let file = std::fs::File::create(&backup_path)?;
-    let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-    let mut tar = tar::Builder::new(encoder);
-    for path in paths {
-        if path.exists() {
-            tar.append_path_with_name(path, path.file_name().unwrap_or_default())?;
-        }
-    }
-    tar.finish()?;
-    for path in paths {
-        let _ = std::fs::remove_file(path);
-    }
-    Ok(())
-}
-
-fn chrono_like_timestamp() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    seconds.to_string()
+    replace_marked_section(&path, "# lum:git-id:begin", "# lum:git-id:end", &section)
 }
 
 fn status() -> Result<()> {

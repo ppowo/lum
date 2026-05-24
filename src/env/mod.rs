@@ -43,8 +43,8 @@ fn init(shell: EnvShell) -> Result<()> {
 }
 
 fn set(alias: &str, value: &str, shell: EnvShell) -> Result<()> {
-    let variable =
-        catalog::variable_for_alias(alias).with_context(|| format!("unknown environment alias: {alias}"))?;
+    let variable = catalog::variable_for_alias(alias)
+        .with_context(|| format!("unknown environment alias: {alias}"))?;
     let mut stored = state::read_state()?;
     stored.insert(alias.to_owned(), value.to_owned());
     state::write_state(&stored)?;
@@ -57,8 +57,8 @@ fn set(alias: &str, value: &str, shell: EnvShell) -> Result<()> {
 }
 
 fn unset(alias: &str, shell: EnvShell) -> Result<()> {
-    let variable =
-        catalog::variable_for_alias(alias).with_context(|| format!("unknown environment alias: {alias}"))?;
+    let variable = catalog::variable_for_alias(alias)
+        .with_context(|| format!("unknown environment alias: {alias}"))?;
     let mut stored = state::read_state()?;
     stored.remove(alias);
     state::write_state(&stored)?;
@@ -77,7 +77,10 @@ fn list() -> Result<()> {
     println!("Aliases (set with 'lum env set <alias> <value>'):");
     for (alias, variable) in catalog::ALIASES {
         if let Some(value) = stored.get(*alias) {
-            println!("  {alias:<10} {variable:<24} = {}", catalog::mask_secret(value));
+            println!(
+                "  {alias:<10} {variable:<24} = {}",
+                catalog::mask_secret(value)
+            );
         } else {
             println!("  {alias:<10} {variable:<24}   (not set)");
         }

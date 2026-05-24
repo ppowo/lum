@@ -1,9 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    fs,
-    path::PathBuf,
-    time::SystemTime,
-};
+use std::{collections::BTreeMap, fs, path::PathBuf, time::SystemTime};
 
 use anyhow::{Context, Result};
 use directories::ProjectDirs;

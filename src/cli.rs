@@ -1,3 +1,4 @@
+use crate::repos::scanner::ScanArgs;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
@@ -15,6 +16,11 @@ pub enum Commands {
     Env {
         #[command(subcommand)]
         command: EnvCommand,
+    },
+    /// Scan directory trees for Git repositories and report status.
+    Repos {
+        #[command(subcommand)]
+        command: ReposCommand,
     },
     /// Manage curated developer tools installed into lum's bin path.
     Tools {
@@ -90,6 +96,44 @@ pub enum ToolsCommand {
     Version { tool: String },
 }
 
+#[derive(Debug, Subcommand)]
+pub enum ReposCommand {
+    /// Scan a directory tree for Git repositories and report branch and sync status.
+    Scan(ScanArgs),
+    /// Clone, update, and inspect configured mirror repositories.
+    Mirror {
+        #[command(subcommand)]
+        command: MirrorCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum MirrorCommand {
+    /// Print the path to the mirror config file.
+    ConfigPath,
+    /// Print the path to the mirror directory.
+    Dir,
+    /// Create a sample mirror config file if none exists.
+    Init,
+    /// List configured mirror repositories.
+    List,
+    /// Clone or update all configured mirror repositories.
+    Sync {
+        /// Maximum concurrent git operations.
+        #[arg(short = 'j', default_value = "4")]
+        jobs: usize,
+    },
+    /// Check if local mirrors are up to date with their remotes.
+    Status {
+        /// Maximum concurrent git operations.
+        #[arg(short = 'j', default_value = "4")]
+        jobs: usize,
+        /// Compare against cached remote refs instead of contacting remotes.
+        #[arg(long)]
+        offline: bool,
+    },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,8 +144,9 @@ mod tests {
         let cli = Cli::parse_from(["lum", "radio"]);
         match cli.command {
             Commands::Radio(args) => assert_eq!(args.station, None),
-            Commands::Env { .. } => panic!("expected radio command"),
-            Commands::Tools { .. } => panic!("expected radio command"),
+            Commands::Env { .. } | Commands::Tools { .. } | Commands::Repos { .. } => {
+                panic!("expected radio command")
+            }
         }
     }
 
@@ -110,8 +155,9 @@ mod tests {
         let cli = Cli::parse_from(["lum", "radio", "atma"]);
         match cli.command {
             Commands::Radio(args) => assert_eq!(args.station.as_deref(), Some("atma")),
-            Commands::Env { .. } => panic!("expected radio command"),
-            Commands::Tools { .. } => panic!("expected radio command"),
+            Commands::Env { .. } | Commands::Tools { .. } | Commands::Repos { .. } => {
+                panic!("expected radio command")
+            }
         }
     }
 }

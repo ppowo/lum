@@ -2,6 +2,7 @@ mod cli;
 mod env;
 mod logging;
 mod radio;
+mod repos;
 mod tools;
 
 use anyhow::Result;
@@ -23,6 +24,7 @@ async fn run() -> Result<()> {
 
     match cli.command {
         Commands::Radio(args) => radio::run(args).await,
+        Commands::Repos { command } => repos::run(command),
         Commands::Env { command } => env::run(command),
         Commands::Tools { command } => tools::run(command),
     }

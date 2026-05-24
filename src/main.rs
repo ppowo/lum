@@ -2,6 +2,7 @@ mod cli;
 mod env;
 mod logging;
 mod radio;
+mod tools;
 
 use anyhow::Result;
 use clap::Parser;
@@ -23,5 +24,6 @@ async fn run() -> Result<()> {
     match cli.command {
         Commands::Radio(args) => radio::run(args).await,
         Commands::Env { command } => env::run(command),
+        Commands::Tools { command } => tools::run(command),
     }
 }

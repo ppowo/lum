@@ -32,6 +32,11 @@ pub enum Commands {
         #[command(subcommand)]
         command: YtCommand,
     },
+    /// Install and manage fonts.
+    Font {
+        #[command(subcommand)]
+        command: FontCommand,
+    },
 }
 
 #[derive(Debug, Args, Clone)]
@@ -163,6 +168,20 @@ pub enum YtCommand {
         urls: Vec<String>,
     },
 }
+
+#[derive(Debug, Subcommand)]
+pub enum FontCommand {
+    /// List managed fonts and local state.
+    Ls,
+    /// Install a managed font.
+    Install {
+        font: String,
+        #[arg(long)]
+        force: bool,
+    },
+    /// Uninstall a managed font.
+    Uninstall { font: String },
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,7 +195,8 @@ mod tests {
             Commands::Env { .. }
             | Commands::Tools { .. }
             | Commands::Repos { .. }
-            | Commands::Yt { .. } => {
+            | Commands::Yt { .. }
+            | Commands::Font { .. } => {
                 panic!("expected radio command")
             }
         }
@@ -190,7 +210,8 @@ mod tests {
             Commands::Env { .. }
             | Commands::Tools { .. }
             | Commands::Repos { .. }
-            | Commands::Yt { .. } => {
+            | Commands::Yt { .. }
+            | Commands::Font { .. } => {
                 panic!("expected radio command")
             }
         }

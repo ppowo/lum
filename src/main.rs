@@ -1,5 +1,6 @@
 mod cli;
 mod env;
+mod font;
 mod logging;
 mod radio;
 mod repos;
@@ -29,5 +30,6 @@ async fn run() -> Result<()> {
         Commands::Env { command } => env::run(command),
         Commands::Tools { command } => tools::run(command),
         Commands::Yt { command } => yt::run(command).await,
+        Commands::Font { command } => font::run(command),
     }
 }

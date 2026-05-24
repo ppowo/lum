@@ -1,0 +1,99 @@
+use std::fs;
+use std::io;
+use std::path::Path;
+
+use anyhow::{Context, Result};
+
+use super::catalog::FontSpec;
+use super::paths;
+
+pub(crate) fn install_font(spec: &FontSpec) -> Result<()> {
+    let font_dir = paths::font_install_dir(spec)?;
+
+    // If reinstalling, remove the old directory first
+    if font_dir.exists() {
+        fs::remove_dir_all(&font_dir)?;
+    }
+
+    // Create the font install directory
+    fs::create_dir_all(&font_dir)?;
+
+    // Download to a temp directory
+    let temp_dir = tempfile::Builder::new()
+        .prefix("lum-font-")
+        .tempdir()?;
+    let zip_path = temp_dir.path().join("font.zip");
+
+    let url = test_artifact_url(spec).unwrap_or_else(|| spec.download_url.to_owned());
+    download_font(&url, &zip_path)?;
+
+    // Extract zip into the font directory
+    extract_ttf_files(&zip_path, &font_dir)?;
+
+    // Refresh font cache (best effort)
+    paths::refresh_font_cache();
+
+    Ok(())
+}
+
+fn test_artifact_url(spec: &FontSpec) -> Option<String> {
+    let env_key = format!(
+        "LUM_FONT_TEST_ARTIFACT_{}",
+        spec.name.replace('-', "_").to_ascii_uppercase()
+    );
+    std::env::var(env_key).ok()
+}
+
+fn download_font(url: &str, dest: &Path) -> Result<()> {
+    // If the URL is a local file path (for testing), copy it directly
+    let path = Path::new(url);
+    if path.exists() {
+        fs::copy(path, dest)?;
+        return Ok(());
+    }
+
+    let mut response = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .user_agent("lum-font/1.0")
+        .build()?
+        .get(url)
+        .send()?
+        .error_for_status()?;
+
+    let mut out = fs::File::create(dest)?;
+    io::copy(&mut response, &mut out)?;
+    Ok(())
+}
+
+fn extract_ttf_files(zip_path: &Path, dest: &Path) -> Result<()> {
+    let file = fs::File::open(zip_path)?;
+    let mut archive = zip::ZipArchive::new(file)?;
+
+    let mut installed = 0u32;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i)?;
+        let name = entry.name().to_owned();
+
+        // Skip directories and non-TTF files
+        if entry.is_dir() || !name.to_ascii_lowercase().ends_with(".ttf") {
+            continue;
+        }
+
+        // Use only the filename, discard any directory prefix in the zip
+        let file_name = Path::new(&name)
+            .file_name()
+            .context(format!("zip entry has no filename: {name}"))?;
+
+        let out_path = dest.join(file_name);
+
+        let mut out_file = fs::File::create(&out_path)?;
+        io::copy(&mut entry, &mut out_file)?;
+        installed += 1;
+    }
+
+    if installed == 0 {
+        anyhow::bail!("no TTF font files found in archive");
+    }
+
+    Ok(())
+}

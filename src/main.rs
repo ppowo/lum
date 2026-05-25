@@ -8,7 +8,6 @@ mod logging;
 mod paths;
 mod radio;
 mod repos;
-mod shell;
 mod tools;
 mod vol;
 mod yt;

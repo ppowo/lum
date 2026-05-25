@@ -1,7 +1,6 @@
 use anyhow::Result;
 
 use crate::cli::MirrorCommand;
-use crate::shell;
 
 pub mod config;
 mod git;
@@ -10,12 +9,12 @@ pub fn run(command: MirrorCommand) -> Result<()> {
     match command {
         MirrorCommand::ConfigPath => {
             let path = config::config_path()?;
-            println!("{}", shell::quote_path(&path));
+            println!("{}", path.display());
             Ok(())
         }
         MirrorCommand::Dir => {
             let dir = mirror_dir()?;
-            println!("{}", shell::quote_path(&dir));
+            println!("{}", dir.display());
             Ok(())
         }
         MirrorCommand::Init => init(),

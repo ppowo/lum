@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, bail};
-use reqwest::blocking::{Client, multipart};
+use reqwest::{Client, multipart};
 use std::path::Path;
 
 // Public file host used by `lum backup`. This must work with the current
@@ -49,19 +49,32 @@ pub(crate) fn client() -> Result<Client> {
         .context("failed to build HTTP client")
 }
 
-pub(crate) fn upload_archive(client: &Client, archive: &Path) -> Result<String> {
-    let part = multipart::Part::file(archive)
+pub(crate) async fn upload_archive(client: &Client, archive: &Path) -> Result<String> {
+    let file_name = archive
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("archive.tar.gz")
+        .to_owned();
+    let bytes = tokio::fs::read(archive)
+        .await
         .with_context(|| format!("failed to open archive {}", archive.display()))?;
+    let part = multipart::Part::bytes(bytes).file_name(file_name);
     let form = multipart::Form::new().part("file", part);
     let response = client
         .post(BACKUP_SERVICE_URL)
         .multipart(form)
         .send()
+        .await
         .context("failed to upload")?
         .error_for_status()
         .context("upload failed")?;
 
-    let url = clean_url(&response.text().context("failed to read upload response")?);
+    let url = clean_url(
+        &response
+            .text()
+            .await
+            .context("failed to read upload response")?,
+    );
     if url.is_empty() {
         bail!("upload failed: empty response");
     }
@@ -71,21 +84,25 @@ pub(crate) fn upload_archive(client: &Client, archive: &Path) -> Result<String> 
     Ok(url)
 }
 
-pub(crate) fn download_archive(client: &Client, url: &str, destination: &Path) -> Result<()> {
-    let mut response = client
+pub(crate) async fn download_archive(client: &Client, url: &str, destination: &Path) -> Result<()> {
+    let bytes = client
         .get(url)
         .send()
+        .await
         .with_context(|| format!("failed to download {url}"))?
         .error_for_status()
-        .with_context(|| format!("failed to download {url}"))?;
-    let mut file = std::fs::File::create(destination)
-        .with_context(|| format!("failed to create {}", destination.display()))?;
-    response.copy_to(&mut file).with_context(|| {
-        format!(
-            "failed to write downloaded archive to {}",
-            destination.display()
-        )
-    })?;
+        .with_context(|| format!("failed to download {url}"))?
+        .bytes()
+        .await
+        .with_context(|| format!("failed to read downloaded archive from {url}"))?;
+    tokio::fs::write(destination, bytes)
+        .await
+        .with_context(|| {
+            format!(
+                "failed to write downloaded archive to {}",
+                destination.display()
+            )
+        })?;
     Ok(())
 }
 

@@ -79,10 +79,7 @@ mod tests {
 
     #[test]
     fn extract_version_from_sentence() {
-        assert_eq!(
-            extract_version("ripgrep 15.1.0"),
-            Some("15.1.0".to_owned())
-        );
+        assert_eq!(extract_version("ripgrep 15.1.0"), Some("15.1.0".to_owned()));
     }
 
     #[test]

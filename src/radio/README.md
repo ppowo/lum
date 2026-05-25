@@ -33,6 +33,16 @@ Out of scope unless a real station requires it:
 - user-configurable stations
 - station aliases
 
+## Blocking Decoder Adapter
+
+`lum radio` runs inside the Tokio runtime for terminal control orchestration, but the stream decoder is intentionally blocking. Symphonia consumes `Read`/`Seek` media sources and CPAL invokes a real-time audio callback, so the current seam is:
+
+- async command/control loop in `radio::mod`
+- `tokio::task::spawn_blocking` for the Symphonia/HTTP decode loop
+- a ring buffer between the blocking decoder and CPAL output callback
+
+Do not move the decoder onto a normal Tokio task. If this area changes, preserve the explicit blocking adapter and focus on cancellation/backpressure behavior rather than making the entire audio path async.
+
 ## Runtime Semantics
 
 Controls:

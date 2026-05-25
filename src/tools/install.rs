@@ -12,6 +12,7 @@ use xz2::read::XzDecoder;
 use super::catalog::ToolSpec;
 use super::platform::{ArchiveType, Artifact};
 use super::state::{ArtifactState, ToolState, bin_dir, load_state, save_state, tool_path};
+use crate::artifact;
 
 pub(crate) fn install_artifact(
     spec: &ToolSpec,
@@ -25,7 +26,7 @@ pub(crate) fn install_artifact(
     download_artifact(&artifact.download_url, &download)?;
     verify_sha256(&download, artifact.checksum_sha256.as_deref())?;
     let source = materialize_binary(&download, temp_dir.path(), artifact)?;
-    install_file(&source, &target)?;
+    artifact::install_executable(&source, &target)?;
 
     let mut stored = load_state()?;
     let now = SystemTime::now();
@@ -122,25 +123,6 @@ fn find_file_named(dir: &Path, filename: &std::ffi::OsStr) -> Result<PathBuf> {
         }
     }
     Err(anyhow::anyhow!("not found"))
-}
-
-fn install_file(source: &Path, target: &Path) -> Result<()> {
-    let temp = target.with_extension("lum-tmp");
-    fs::copy(source, &temp)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&temp, fs::Permissions::from_mode(0o755))?;
-    }
-    if cfg!(windows) && target.exists() {
-        fs::remove_file(target)?;
-    }
-    fs::rename(&temp, target).or_else(|_| {
-        fs::copy(&temp, target)?;
-        fs::remove_file(&temp)?;
-        Ok::<_, std::io::Error>(())
-    })?;
-    Ok(())
 }
 
 fn verify_sha256(path: &Path, expected: Option<&str>) -> Result<()> {

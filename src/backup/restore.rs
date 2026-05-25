@@ -6,7 +6,7 @@ use super::archive;
 use super::target::{BackupTarget, KEEP_BACKUPS};
 use super::upload;
 
-pub(crate) fn restore_backup(target: BackupTarget, code: &str) -> Result<()> {
+pub(crate) async fn restore_backup(target: BackupTarget, code: &str) -> Result<()> {
     println!(
         "{} - Starting {} restore from code: {}",
         timestamp(),
@@ -24,12 +24,16 @@ pub(crate) fn restore_backup(target: BackupTarget, code: &str) -> Result<()> {
     let tmp_path = tmp.path().to_owned();
 
     println!("{} - Downloading...", timestamp());
-    upload::download_archive(&client, &url, &tmp_path)?;
+    upload::download_archive(&client, &url, &tmp_path).await?;
 
     println!("{} - Verifying downloaded archive...", timestamp());
-    archive::verify_tar_gz(&tmp_path, target).context(
-        "downloaded file is not a valid tar.gz archive; you may have entered the wrong code or the file may have expired",
-    )?;
+    let verify_path = tmp_path.clone();
+    tokio::task::spawn_blocking(move || archive::verify_tar_gz(&verify_path, target))
+        .await
+        .context("archive verification task failed")?
+        .context(
+            "downloaded file is not a valid tar.gz archive; you may have entered the wrong code or the file may have expired",
+        )?;
     let size_mb = tmp.as_file().metadata()?.len() as f64 / (1024.0 * 1024.0);
     println!(
         "{} - Archive verified (size: {:.2} MB)",
@@ -71,7 +75,13 @@ pub(crate) fn restore_backup(target: BackupTarget, code: &str) -> Result<()> {
         timestamp(),
         home.display()
     );
-    if let Err(error) = archive::extract_tar_gz(&tmp_path, &home) {
+    let extract_path = tmp_path.clone();
+    let extract_home = home.clone();
+    let extract_result =
+        tokio::task::spawn_blocking(move || archive::extract_tar_gz(&extract_path, &extract_home))
+            .await
+            .context("archive extraction task failed")?;
+    if let Err(error) = extract_result {
         if let Some(backup_path) = &existing_backup {
             println!("{} - Extraction failed, restoring backup...", timestamp());
             let _ = std::fs::rename(backup_path, &target_path);

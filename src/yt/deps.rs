@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
+use crate::artifact;
 const STALE_THRESHOLD: Duration = Duration::from_secs(24 * 60 * 60);
 const TEST_ARTIFACT_ENV: &str = "LUM_YT_DLP_TEST_ARTIFACT";
 
@@ -95,12 +96,7 @@ async fn try_update(local: &Path, state_path: &Path) -> Result<()> {
         .error_for_status()?
         .bytes()
         .await?;
-    std::fs::write(local, &binary_data)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(local, std::fs::Permissions::from_mode(0o755))?;
-    }
+    artifact::write_executable(local, &binary_data)?;
 
     let state = DepState {
         version: latest.version,
@@ -122,12 +118,7 @@ async fn download_yt_dlp(local: &Path, state_path: &Path) -> Result<()> {
         .error_for_status()?
         .bytes()
         .await?;
-    std::fs::write(local, &binary_data)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(local, std::fs::Permissions::from_mode(0o755))?;
-    }
+    artifact::write_executable(local, &binary_data)?;
 
     let state = DepState {
         version: info.version,
@@ -140,18 +131,13 @@ async fn download_yt_dlp(local: &Path, state_path: &Path) -> Result<()> {
 }
 
 fn install_from_local_artifact(source: &Path, local: &Path, state_path: &Path) -> Result<()> {
-    std::fs::copy(source, local).with_context(|| {
+    artifact::install_executable(source, local).with_context(|| {
         format!(
             "failed to copy test yt-dlp artifact from {} to {}",
             source.display(),
             local.display()
         )
     })?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(local, std::fs::Permissions::from_mode(0o755))?;
-    }
     let state = DepState {
         version: "test".into(),
         last_checked: Some(now_epoch_secs()),

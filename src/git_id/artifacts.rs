@@ -85,10 +85,10 @@ where
         let name = entry.file_name().to_string_lossy().to_string();
         if let Some(identity_name) = name.strip_prefix(".gitconfig-lum-git-id-")
             && !active.contains(identity_name)
-                && is_lum_managed_file(
-                    &entry.path(),
-                    &format!("# lum:git-id:managed identity={identity_name}"),
-                )?
+            && is_lum_managed_file(
+                &entry.path(),
+                &format!("# lum:git-id:managed identity={identity_name}"),
+            )?
         {
             backup_and_remove(&[entry.path()])?;
         }

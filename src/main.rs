@@ -7,6 +7,7 @@ mod git_id;
 mod logging;
 mod radio;
 mod repos;
+mod shell;
 mod tools;
 mod vol;
 mod yt;

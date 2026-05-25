@@ -5,6 +5,7 @@ mod state;
 use anyhow::{Context, Result};
 
 use crate::cli::{EnvCommand, EnvShell};
+use crate::shell::quote_path;
 
 pub fn run(command: EnvCommand) -> Result<()> {
     match command {
@@ -16,7 +17,7 @@ pub fn run(command: EnvCommand) -> Result<()> {
         } => set(&alias, &value, shell.unwrap_or_default()),
         EnvCommand::Unset { shell, alias } => unset(&alias, shell.unwrap_or_default()),
         EnvCommand::Path => {
-            println!("{}", state::bin_dir()?.display());
+            println!("{}", quote_path(&state::bin_dir()?));
             Ok(())
         }
         EnvCommand::List => list(),

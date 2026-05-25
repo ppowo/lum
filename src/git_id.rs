@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 
 use crate::cli::GitIdCommand;
+use crate::shell;
 
 #[path = "git_id/artifacts.rs"]
 mod artifacts;
@@ -21,7 +22,7 @@ use config::{
 pub fn run(command: GitIdCommand) -> Result<()> {
     match command {
         GitIdCommand::ConfigPath => {
-            println!("{}", config_path()?.display());
+            println!("{}", shell::quote_path(&config_path()?));
             Ok(())
         }
         GitIdCommand::Init => init(),

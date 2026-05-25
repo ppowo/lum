@@ -39,6 +39,9 @@ lum() {{
 if [ -n "$BASH_VERSION" ]; then
   eval "$(command lum __completions bash)"
 elif [ -n "$ZSH_VERSION" ]; then
+  if ! command -v compdef >/dev/null 2>&1; then
+    autoload -Uz compinit && compinit -i
+  fi
   eval "$(command lum __completions zsh)"
 fi
 # --- end lum shell completion ---"#,

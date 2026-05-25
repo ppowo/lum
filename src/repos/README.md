@@ -34,7 +34,7 @@ Skips symlinks, `.git/` directories, and (by default) hidden directories. Report
 
 ## Mirror (`repos mirror`)
 
-Maintains shallow (`--depth 1 --no-single-branch`) read-only clones under `~/Documents/CodeMirror/`. Configuration lives in `~/.config/lum/repos.json`.
+Maintains shallow (`--depth 1 --no-single-branch`) read-only clones under `~/Documents/CodeMirror/`. Configuration lives in lum's centralized config directory as `repos.json`.
 
 ### Config File
 

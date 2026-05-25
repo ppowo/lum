@@ -130,8 +130,10 @@ fn sync_cmd(dry_run: bool) -> Result<()> {
         match status.effective_version() {
             None if dry_run => println!("• {}: would install {}", spec.name, artifact.version),
             None => {
+                print!("• {}: installing {}... ", spec.name, artifact.version);
+                std::io::Write::flush(&mut std::io::stdout())?;
                 install::install_artifact(spec, &artifact, None)?;
-                println!("• {}: installed {}", spec.name, artifact.version);
+                println!("done");
                 installed += 1;
             }
             Some(current)
@@ -143,11 +145,13 @@ fn sync_cmd(dry_run: bool) -> Result<()> {
                 )
             }
             Some(current) if version::compare_versions(current, &artifact.version) < 0 => {
-                install::install_artifact(spec, &artifact, status.installed_at()?)?;
-                println!(
-                    "• {}: updated {} -> {}",
+                print!(
+                    "• {}: updating {} -> {}... ",
                     spec.name, current, artifact.version
                 );
+                std::io::Write::flush(&mut std::io::stdout())?;
+                install::install_artifact(spec, &artifact, status.installed_at()?)?;
+                println!("done");
                 updated += 1;
             }
             Some(current) => {

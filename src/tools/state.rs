@@ -1,7 +1,6 @@
 use std::{collections::BTreeMap, fs, path::PathBuf, time::SystemTime};
 
 use anyhow::{Context, Result};
-use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 use super::catalog::{CATALOG, ToolSpec};
@@ -117,7 +116,7 @@ pub(crate) fn save_state(state: &ToolsState) -> Result<()> {
 }
 
 pub(crate) fn bin_dir() -> Result<PathBuf> {
-    Ok(dirs()?.data_dir().join("bin"))
+    crate::paths::bin_dir()
 }
 
 pub(crate) fn tool_path(spec: &ToolSpec) -> Result<PathBuf> {
@@ -125,9 +124,5 @@ pub(crate) fn tool_path(spec: &ToolSpec) -> Result<PathBuf> {
 }
 
 fn state_path() -> Result<PathBuf> {
-    Ok(dirs()?.config_dir().join("tools-state.json"))
-}
-
-fn dirs() -> Result<ProjectDirs> {
-    ProjectDirs::from("dev", "ppowo", "lum").context("failed to determine platform directories")
+    crate::paths::tools_state_file()
 }

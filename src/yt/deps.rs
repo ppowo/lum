@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
-use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 use crate::artifact;
@@ -198,9 +197,7 @@ fn yt_dlp_asset_name() -> &'static str {
 }
 
 pub(crate) fn deps_dir() -> Result<PathBuf> {
-    let dirs = ProjectDirs::from("dev", "ppowo", "lum")
-        .context("failed to determine platform directories")?;
-    Ok(dirs.data_dir().join("deps"))
+    crate::paths::yt_deps_dir()
 }
 
 fn yt_dlp_binary_name() -> &'static str {

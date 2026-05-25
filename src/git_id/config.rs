@@ -18,15 +18,11 @@ pub struct GitIdentitiesConfig {
 }
 
 pub fn config_path() -> Result<PathBuf> {
-    let dirs = directories::ProjectDirs::from("", "", "lum")
-        .ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
-    Ok(dirs.config_dir().join("git-identities.json"))
+    crate::paths::git_id_config_file()
 }
 
 pub fn data_dir() -> Result<PathBuf> {
-    let dirs = directories::ProjectDirs::from("", "", "lum")
-        .ok_or_else(|| anyhow::anyhow!("cannot determine data directory"))?;
-    Ok(dirs.data_dir().join("git-id"))
+    crate::paths::git_id_data_dir()
 }
 
 pub fn load_config() -> Result<Vec<Identity>> {
@@ -128,7 +124,7 @@ pub fn expand_path(path: &str) -> PathBuf {
 }
 
 pub fn normalize_path(path: &Path) -> PathBuf {
-    path.components().collect()
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.components().collect())
 }
 
 pub fn identity_private_key_path(identity: &Identity) -> Result<PathBuf> {

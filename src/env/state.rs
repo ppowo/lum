@@ -1,7 +1,6 @@
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use anyhow::{Context, Result};
-use directories::ProjectDirs;
 
 pub(crate) fn read_state() -> Result<BTreeMap<String, String>> {
     let path = state_path()?;
@@ -24,13 +23,9 @@ pub(crate) fn write_state(state: &BTreeMap<String, String>) -> Result<()> {
 }
 
 pub(crate) fn bin_dir() -> Result<PathBuf> {
-    Ok(dirs()?.data_dir().join("bin"))
+    crate::paths::bin_dir()
 }
 
 fn state_path() -> Result<PathBuf> {
-    Ok(dirs()?.config_dir().join("env-state.json"))
-}
-
-fn dirs() -> Result<ProjectDirs> {
-    ProjectDirs::from("dev", "ppowo", "lum").context("failed to determine platform directories")
+    crate::paths::env_state_file()
 }

@@ -5,7 +5,6 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use directories::ProjectDirs;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -31,10 +30,7 @@ pub fn init() -> Result<WorkerGuard> {
 }
 
 pub fn log_dir() -> Result<PathBuf> {
-    let dirs = ProjectDirs::from("dev", "ppowo", "lum")
-        .context("failed to determine platform log directory")?;
-    let base = dirs.state_dir().unwrap_or_else(|| dirs.data_dir());
-    Ok(base.join("logs"))
+    crate::paths::log_dir()
 }
 
 fn cleanup_old_logs(dir: &Path, now: SystemTime) -> Result<()> {

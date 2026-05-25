@@ -29,7 +29,7 @@ For testing or explicit selection, `lum env init`, `lum env set`, and `lum env u
 
 ## Storage
 
-Use `directories::ProjectDirs::from("dev", "ppowo", "lum")`:
+Use lum's centralized platform directory policy (`directories::ProjectDirs::from("dev", "ppowo", "lum")`):
 
 - state: `config_dir()/env-state.json`
 - bin directory: `data_dir()/bin`

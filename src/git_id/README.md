@@ -17,7 +17,7 @@ lum git-id paths
 
 ## Config
 
-The config path is resolved with `directories::ProjectDirs` and printed by `lum git-id config-path`.
+The config path is resolved through lum's centralized platform directory policy and printed by `lum git-id config-path`.
 
 ```json
 {

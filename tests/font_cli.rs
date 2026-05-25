@@ -6,9 +6,18 @@ use zip::write::SimpleFileOptions;
 
 fn lum_with_env(home: &TempDir) -> Command {
     let mut cmd = Command::cargo_bin("lum").unwrap();
-    cmd.env("XDG_CONFIG_HOME", home.path().join("config"))
+    cmd.env("HOME", home.path())
+        .env("XDG_CONFIG_HOME", home.path().join("config"))
         .env("XDG_DATA_HOME", home.path().join("data"));
     cmd
+}
+
+fn test_font_dir(home: &TempDir) -> std::path::PathBuf {
+    if cfg!(target_os = "macos") {
+        home.path().join("Library").join("Fonts")
+    } else {
+        home.path().join("data").join("fonts")
+    }
 }
 
 /// Create a minimal zip containing fake TTF files for testing.
@@ -57,11 +66,7 @@ fn font_ls_lists_the_managed_catalog() {
 #[test]
 fn font_ls_shows_installed_for_present_font_dir() {
     let home = TempDir::new().unwrap();
-    let font_dir = home
-        .path()
-        .join("data")
-        .join("fonts")
-        .join("dmca-sans-serif");
+    let font_dir = test_font_dir(&home).join("dmca-sans-serif");
     std::fs::create_dir_all(&font_dir).unwrap();
 
     lum_with_env(&home)
@@ -118,11 +123,7 @@ fn font_install_downloads_and_extracts_ttf_files() {
         .stdout(predicates::str::contains("Installed dmca-sans-serif"));
 
     // Verify TTF files were extracted (not the .txt)
-    let font_dir = home
-        .path()
-        .join("data")
-        .join("fonts")
-        .join("dmca-sans-serif");
+    let font_dir = test_font_dir(&home).join("dmca-sans-serif");
     assert!(font_dir.join("FakeFont-Regular.ttf").exists());
     assert!(font_dir.join("FakeFont-Bold.ttf").exists());
     assert!(!font_dir.join("Arial.ttf").exists());
@@ -200,11 +201,7 @@ fn font_install_force_preserves_existing_install_when_new_archive_is_bad() {
         .assert()
         .failure();
 
-    let font_dir = home
-        .path()
-        .join("data")
-        .join("fonts")
-        .join("dmca-sans-serif");
+    let font_dir = test_font_dir(&home).join("dmca-sans-serif");
     assert!(font_dir.join("FakeFont-Regular.ttf").exists());
 }
 
@@ -220,11 +217,7 @@ fn font_install_failure_does_not_leave_installed_marker() {
         .assert()
         .failure();
 
-    let font_dir = home
-        .path()
-        .join("data")
-        .join("fonts")
-        .join("dmca-sans-serif");
+    let font_dir = test_font_dir(&home).join("dmca-sans-serif");
     assert!(!font_dir.exists());
 }
 
@@ -248,11 +241,7 @@ fn font_uninstall_removes_font_directory() {
         .stdout(predicates::str::contains("Uninstalled dmca-sans-serif"));
 
     // Font directory should be gone
-    let font_dir = home
-        .path()
-        .join("data")
-        .join("fonts")
-        .join("dmca-sans-serif");
+    let font_dir = test_font_dir(&home).join("dmca-sans-serif");
     assert!(!font_dir.exists());
 
     // ls should show "available" again

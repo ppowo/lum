@@ -42,11 +42,9 @@ pub struct ReposConfig {
     pub repos: Vec<RepoEntry>,
 }
 
-/// Resolve the config file path via XDG directories.
+/// Resolve the config file path via lum platform directories.
 pub fn config_path() -> Result<PathBuf> {
-    let dirs = directories::ProjectDirs::from("", "", "lum")
-        .ok_or_else(|| anyhow::anyhow!("cannot determine config directory"))?;
-    Ok(dirs.config_dir().join("repos.json"))
+    crate::paths::repos_mirror_config_file()
 }
 
 /// Load and validate the config file.

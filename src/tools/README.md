@@ -17,7 +17,7 @@ There is no opt-in catalog behavior and no `--all` flag. `sync` is the all-tools
 
 ## Storage
 
-Use `directories::ProjectDirs::from("dev", "ppowo", "lum")`:
+Use lum's centralized platform directory policy (`directories::ProjectDirs::from("dev", "ppowo", "lum")`):
 
 - state: `config_dir()/tools-state.json`
 - entrypoints/install path: `data_dir()/bin`, matching `lum env path`

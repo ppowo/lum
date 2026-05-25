@@ -22,7 +22,7 @@ async fn run_target(target: target::BackupTarget, code: Option<String>) -> Resul
 }
 
 async fn upload_target(target: target::BackupTarget) -> Result<()> {
-    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("failed to get home directory"))?;
+    let home = crate::paths::home_dir()?;
     let target_path = target.target_path(&home);
     if !target_path.exists() {
         anyhow::bail!(

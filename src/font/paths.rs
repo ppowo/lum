@@ -12,7 +12,7 @@ use super::catalog::FontSpec;
 pub(crate) fn user_font_dir() -> Result<PathBuf> {
     match std::env::consts::OS {
         "macos" => {
-            let home = dirs::home_dir().context("could not determine home directory")?;
+            let home = crate::paths::home_dir()?;
             Ok(home.join("Library").join("Fonts"))
         }
         "linux" => {
@@ -20,7 +20,7 @@ pub(crate) fn user_font_dir() -> Result<PathBuf> {
             if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
                 Ok(PathBuf::from(xdg).join("fonts"))
             } else {
-                let home = dirs::home_dir().context("could not determine home directory")?;
+                let home = crate::paths::home_dir()?;
                 Ok(home.join(".local").join("share").join("fonts"))
             }
         }

@@ -69,13 +69,17 @@ mod output_dirs {
 
     pub fn audio_dir() -> PathBuf {
         dirs::audio_dir().unwrap_or_else(|| {
-            PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join("Music")
+            crate::paths::home_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join("Music")
         })
     }
 
     pub fn video_dir() -> PathBuf {
         dirs::video_dir().unwrap_or_else(|| {
-            PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join("Movies")
+            crate::paths::home_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join("Movies")
         })
     }
 }

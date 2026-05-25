@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
@@ -78,4 +78,29 @@ pub(crate) fn yt_deps_dir() -> Result<PathBuf> {
 
 pub(crate) fn log_dir() -> Result<PathBuf> {
     state_dir("logs")
+}
+
+/// Resolve home directory or bail.
+pub(crate) fn home_dir() -> Result<PathBuf> {
+    dirs::home_dir().ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))
+}
+
+/// Join a relative path to the home directory.
+pub(crate) fn home_path(relative: &str) -> Result<PathBuf> {
+    Ok(home_dir()?.join(relative))
+}
+
+/// Expand a `~/` prefix to the home directory, if present.
+pub(crate) fn expand_path(path: &str) -> PathBuf {
+    if let Some(rest) = path.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(rest);
+    }
+    PathBuf::from(path)
+}
+
+/// Canonicalize a path, falling back to a cleaned non-canonical version.
+pub(crate) fn normalize_path(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.components().collect())
 }

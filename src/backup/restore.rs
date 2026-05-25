@@ -13,7 +13,7 @@ pub(crate) async fn restore_backup(target: BackupTarget, code: &str) -> Result<(
         target.name,
         code
     );
-    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("failed to get home directory"))?;
+    let home = crate::paths::home_dir()?;
     let client = upload::client()?;
     let url = upload::restore_url(code);
     let tmp = tempfile::Builder::new()

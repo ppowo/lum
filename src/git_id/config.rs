@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Identity {
@@ -83,8 +83,8 @@ fn validate(identities: &[Identity]) -> Result<()> {
             if folder.trim().is_empty() {
                 anyhow::bail!("identity {}: folder must not be empty", identity.name);
             }
-            let expanded = expand_path(folder);
-            let normalized = normalize_path(&expanded);
+            let expanded = crate::paths::expand_path(folder);
+            let normalized = crate::paths::normalize_path(&expanded);
             if !folders.insert(normalized) {
                 anyhow::bail!("duplicate managed folder: {}", folder);
             }
@@ -93,15 +93,18 @@ fn validate(identities: &[Identity]) -> Result<()> {
     Ok(())
 }
 
-pub fn detect_identity<'a>(identities: &'a [Identity], dir: &Path) -> Option<&'a Identity> {
-    let dir = normalize_path(dir);
+pub fn detect_identity<'a>(
+    identities: &'a [Identity],
+    dir: &std::path::Path,
+) -> Option<&'a Identity> {
+    let dir = crate::paths::normalize_path(dir);
     identities
         .iter()
         .filter_map(|identity| {
             identity
                 .folders
                 .iter()
-                .map(|folder| normalize_path(&expand_path(folder)))
+                .map(|folder| crate::paths::normalize_path(&crate::paths::expand_path(folder)))
                 .filter(|folder| is_path_prefix(folder, &dir))
                 .map(|folder| (folder.components().count(), identity))
                 .max_by_key(|(len, _)| *len)
@@ -110,26 +113,12 @@ pub fn detect_identity<'a>(identities: &'a [Identity], dir: &Path) -> Option<&'a
         .map(|(_, identity)| identity)
 }
 
-fn is_path_prefix(prefix: &Path, path: &Path) -> bool {
+fn is_path_prefix(prefix: &std::path::Path, path: &std::path::Path) -> bool {
     path == prefix || path.starts_with(prefix)
 }
 
-pub fn expand_path(path: &str) -> PathBuf {
-    if let Some(rest) = path.strip_prefix("~/")
-        && let Some(home) = dirs::home_dir()
-    {
-        return home.join(rest);
-    }
-    PathBuf::from(path)
-}
-
-pub fn normalize_path(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.components().collect())
-}
-
 pub fn identity_private_key_path(identity: &Identity) -> Result<PathBuf> {
-    Ok(dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
+    Ok(crate::paths::home_dir()?
         .join(".ssh")
         .join(format!("lum-git-id-{}", identity.name)))
 }
@@ -139,21 +128,13 @@ pub fn identity_public_key_path(identity: &Identity) -> Result<PathBuf> {
 }
 
 pub fn identity_git_config_path(identity: &Identity) -> Result<PathBuf> {
-    Ok(dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
-        .join(format!(".gitconfig-lum-git-id-{}", identity.name)))
+    Ok(crate::paths::home_dir()?.join(format!(".gitconfig-lum-git-id-{}", identity.name)))
 }
 
 pub fn allowed_signers_path() -> Result<PathBuf> {
-    home_path(".ssh/allowed_signers")
+    crate::paths::home_path(".ssh/allowed_signers")
 }
 
-pub fn home_path(relative: &str) -> Result<PathBuf> {
-    Ok(dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
-        .join(relative))
-}
-
-pub fn git_path(path: &Path) -> String {
+pub fn git_path(path: &std::path::Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }

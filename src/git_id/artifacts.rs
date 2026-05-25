@@ -1,7 +1,8 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
-use super::config::{Identity, data_dir, home_path};
+use super::config::{Identity, data_dir};
+use crate::paths::home_path;
 
 pub fn read_optional(path: &Path) -> Result<String> {
     match std::fs::read_to_string(path) {
@@ -74,8 +75,7 @@ pub fn cleanup_orphan_identity_configs<F>(
 where
     F: Fn(&Identity) -> Result<PathBuf>,
 {
-    let home =
-        dirs::home_dir().ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?;
+    let home = crate::paths::home_dir()?;
     let active: std::collections::HashSet<_> = identities
         .iter()
         .map(|identity| identity.name.clone())

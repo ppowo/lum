@@ -8,15 +8,15 @@ mod artifacts;
 #[path = "git_id/config.rs"]
 mod config;
 
+use crate::paths::expand_path;
 use artifacts::{
     cleanup_old_backups, cleanup_orphan_identity_configs, cleanup_orphan_key_pairs,
     is_lum_managed_file, replace_marked_section,
 };
 pub use config::config_path;
 use config::{
-    GitIdentitiesConfig, Identity, allowed_signers_path, data_dir, detect_identity, expand_path,
-    git_path, home_path, identity_git_config_path, identity_private_key_path,
-    identity_public_key_path, load_config, normalize_path,
+    GitIdentitiesConfig, Identity, allowed_signers_path, data_dir, detect_identity, git_path,
+    identity_git_config_path, identity_private_key_path, identity_public_key_path, load_config,
 };
 
 pub fn run(command: GitIdCommand) -> Result<()> {
@@ -188,7 +188,7 @@ fn write_identity_git_config(identity: &Identity) -> Result<()> {
 }
 
 fn write_global_git_config(identities: &[Identity]) -> Result<()> {
-    let path = home_path(".gitconfig")?;
+    let path = crate::paths::home_path(".gitconfig")?;
     let mut entries: Vec<_> = identities
         .iter()
         .flat_map(|identity| {
@@ -198,7 +198,11 @@ fn write_global_git_config(identities: &[Identity]) -> Result<()> {
                 .map(move |folder| (identity, folder))
         })
         .collect();
-    entries.sort_by_key(|(_, folder)| normalize_path(&expand_path(folder)).components().count());
+    entries.sort_by_key(|(_, folder)| {
+        crate::paths::normalize_path(&expand_path(folder))
+            .components()
+            .count()
+    });
 
     let mut section = String::from("# lum:git-id:begin\n");
     for (identity, folder) in entries {
@@ -217,7 +221,7 @@ fn write_global_git_config(identities: &[Identity]) -> Result<()> {
 }
 
 fn write_ssh_config(identities: &[Identity]) -> Result<()> {
-    let path = home_path(".ssh/config")?;
+    let path = crate::paths::home_path(".ssh/config")?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -313,21 +317,21 @@ fn paths() -> Result<()> {
     println!("Global files touched:");
     println!(
         "  {}",
-        dirs::home_dir()
+        crate::paths::home_dir()
             .unwrap_or_default()
             .join(".gitconfig")
             .display()
     );
     println!(
         "  {}",
-        dirs::home_dir()
+        crate::paths::home_dir()
             .unwrap_or_default()
             .join(".ssh/config")
             .display()
     );
     println!(
         "  {}",
-        dirs::home_dir()
+        crate::paths::home_dir()
             .unwrap_or_default()
             .join(".ssh/allowed_signers")
             .display()

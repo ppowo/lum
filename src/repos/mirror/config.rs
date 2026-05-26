@@ -34,6 +34,11 @@ impl RepoEntry {
         }
         name
     }
+
+    /// Check whether this entry has a tag matching `needle`, case-insensitively.
+    pub fn has_tag(&self, needle: &str) -> bool {
+        self.tags.iter().any(|t| t.eq_ignore_ascii_case(needle))
+    }
 }
 
 /// Top-level config file shape.
@@ -183,5 +188,19 @@ mod tests {
             tags: vec![],
         }];
         assert!(validate_repos(&entries).is_err());
+    }
+
+    #[test]
+    fn has_tag_case_insensitive() {
+        let repo = RepoEntry {
+            url: "https://github.com/org/repo.git".into(),
+            branch: "main".into(),
+            tags: vec!["Metrocargo".into(), "MACAW".into()],
+        };
+        assert!(repo.has_tag("metrocargo"));
+        assert!(repo.has_tag("METROCARGO"));
+        assert!(repo.has_tag("Metrocargo"));
+        assert!(repo.has_tag("macaw"));
+        assert!(!repo.has_tag("barolo"));
     }
 }

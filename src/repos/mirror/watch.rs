@@ -37,7 +37,7 @@ pub fn run(tag: Option<String>, cycles: Option<usize>) -> Result<()> {
                 Vec::new()
             };
 
-            let matching: Vec<_> = repos.iter().filter(|r| r.tags.contains(&tag)).collect();
+            let matching: Vec<_> = repos.iter().filter(|r| r.has_tag(&tag)).collect();
 
             if matching.is_empty() {
                 println!("No repos found with tag \"{tag}\".");

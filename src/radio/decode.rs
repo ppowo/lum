@@ -19,10 +19,7 @@ use symphonia::core::{
     meta::MetadataOptions,
 };
 
-use super::{
-    audio::{AudioWriter, SAMPLE_RATE},
-    stations::Station,
-};
+use super::{audio::AudioWriter, stations::Station};
 
 struct HttpStream {
     inner: Mutex<reqwest::blocking::Response>,
@@ -82,7 +79,7 @@ pub fn stream_station(station: Station, writer: AudioWriter, stop: Arc<AtomicBoo
         .make_audio_decoder(params, &AudioDecoderOptions::default())
         .context("failed to create audio decoder")?;
     let mut samples = Vec::<f32>::new();
-    let mut normalizer = AudioNormalizer::new();
+    let mut normalizer = AudioNormalizer::new(writer.sample_rate());
 
     while !stop.load(Ordering::Relaxed) {
         let packet = match format.next_packet() {
@@ -137,7 +134,7 @@ pub(crate) fn probe_station_decode(station: Station, packets_to_decode: usize) -
         .context("failed to create audio decoder")?;
     let mut decoded = 0;
 
-    let mut normalizer = AudioNormalizer::new();
+    let mut normalizer = AudioNormalizer::new(super::audio::DEFAULT_SAMPLE_RATE);
 
     while decoded < packets_to_decode {
         let packet = match format.next_packet() {
@@ -202,6 +199,7 @@ fn open_station_format(station: Station) -> Result<Box<dyn FormatReader>> {
 }
 
 struct AudioNormalizer {
+    output_rate: u32,
     resampler: Option<StreamResampler>,
 }
 
@@ -212,8 +210,11 @@ struct StreamResampler {
 }
 
 impl AudioNormalizer {
-    fn new() -> Self {
-        Self { resampler: None }
+    fn new(output_rate: u32) -> Self {
+        Self {
+            output_rate,
+            resampler: None,
+        }
     }
 
     fn normalize(
@@ -227,10 +228,10 @@ impl AudioNormalizer {
             bail!("stream has no audio channels");
         }
 
-        let samples = if input_rate == SAMPLE_RATE {
+        let samples = if input_rate == self.output_rate {
             interleaved.to_vec()
         } else {
-            self.resample_interleaved(interleaved, input_channels, input_rate, SAMPLE_RATE)?
+            self.resample_interleaved(interleaved, input_channels, input_rate, self.output_rate)?
         };
 
         match input_channels {
@@ -297,7 +298,7 @@ fn normalize_audio(
     spec: &symphonia::core::audio::AudioSpec,
     interleaved: &[f32],
 ) -> Result<Vec<f32>> {
-    AudioNormalizer::new().normalize(spec, interleaved)
+    AudioNormalizer::new(super::audio::DEFAULT_SAMPLE_RATE).normalize(spec, interleaved)
 }
 
 #[cfg(test)]
@@ -333,6 +334,21 @@ mod tests {
         }
     }
 
+
+    #[test]
+    fn normalizes_to_the_output_device_sample_rate() {
+        use symphonia::core::audio::{AudioSpec, layouts::CHANNEL_LAYOUT_MONO};
+
+        let spec = AudioSpec::new(44_100, CHANNEL_LAYOUT_MONO);
+        let mono = vec![0.5; 4_410];
+        let mut normalizer = super::AudioNormalizer::new(48_000);
+
+        let output = normalizer.normalize(&spec, &mono).unwrap();
+
+        assert_eq!(output.len() % 2, 0);
+        assert!(output.len() > mono.len() * 2);
+    }
+
     #[test]
     fn resampling_preserves_filter_state_across_packets() {
         use symphonia::core::audio::{AudioSpec, layouts::CHANNEL_LAYOUT_MONO};
@@ -341,11 +357,13 @@ mod tests {
         let first_packet = vec![0.25; 2_048];
         let second_packet = vec![0.25; 2_048];
 
-        let mut stream_normalizer = super::AudioNormalizer::new();
+        let mut stream_normalizer =
+            super::AudioNormalizer::new(super::super::audio::DEFAULT_SAMPLE_RATE);
         let first = stream_normalizer.normalize(&spec, &first_packet).unwrap();
         let second = stream_normalizer.normalize(&spec, &second_packet).unwrap();
 
-        let mut stateless_normalizer = super::AudioNormalizer::new();
+        let mut stateless_normalizer =
+            super::AudioNormalizer::new(super::super::audio::DEFAULT_SAMPLE_RATE);
         let stateless_second = stateless_normalizer
             .normalize(&spec, &second_packet)
             .unwrap();

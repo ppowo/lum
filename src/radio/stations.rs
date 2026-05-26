@@ -12,6 +12,11 @@ const STATIONS: &[Station] = &[
         url: "https://atma.fm/channel1",
     },
     Station {
+        code: "atm2",
+        description: "atma.fm Channel 2 - Darkwave, dark ambient, and neoclassical/gothic music",
+        url: "https://atma.fm/channel2",
+    },
+    Station {
         code: "ssom",
         description: "SomaFM Space Station Soma - Spaced-out ambient and mid-tempo electronica",
         url: "https://ice5.somafm.com/spacestation-128-mp3",
@@ -74,7 +79,7 @@ mod tests {
         assert_eq!(
             codes,
             [
-                "atma", "ssom", "beat", "grve", "nood", "drmm", "9128", "arab"
+                "atma", "atm2", "ssom", "beat", "grve", "nood", "drmm", "9128", "arab",
             ]
         );
     }
@@ -82,6 +87,7 @@ mod tests {
     #[test]
     fn finds_station_by_exact_code() {
         assert_eq!(find("atma").unwrap().url, "https://atma.fm/channel1");
+        assert_eq!(find("atm2").unwrap().url, "https://atma.fm/channel2");
         assert!(find("ATMA").is_none());
     }
 
@@ -89,6 +95,9 @@ mod tests {
     fn listing_matches_ruv_plain_format() {
         let listing = format_listing();
         assert!(listing.starts_with("atma  atma.fm Channel 1"));
+        assert!(listing.contains(
+            "\natm2  atma.fm Channel 2 - Darkwave, dark ambient, and neoclassical/gothic music"
+        ));
         assert!(listing.contains("\nssom  SomaFM Space Station Soma"));
         assert!(
             listing

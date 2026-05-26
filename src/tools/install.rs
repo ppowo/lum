@@ -131,8 +131,19 @@ fn verify_sha256(path: &Path, expected: Option<&str>) -> Result<()> {
     };
     let mut file = fs::File::open(path)?;
     let mut hasher = Sha256::new();
-    io::copy(&mut file, &mut hasher)?;
-    let actual = format!("{:x}", hasher.finalize());
+    let mut buffer = [0u8; 8192];
+    loop {
+        let read = io::Read::read(&mut file, &mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    let actual = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     if !actual.eq_ignore_ascii_case(expected.trim()) {
         anyhow::bail!("checksum mismatch for {}", path.display());
     }

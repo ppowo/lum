@@ -44,6 +44,8 @@ pub fn run(tag: Option<String>, cycles: Option<usize>) -> Result<()> {
                 return Ok(());
             }
 
+            println!("{}", format_startup_banner(&tag, &matching));
+            send_startup_notification(&tag);
             let state_path = paths::repos_mirror_watch_state_file()?;
             let cycle_count = cycles.unwrap_or(usize::MAX);
 
@@ -117,6 +119,36 @@ fn url_basename(url: &str) -> String {
         .to_string()
 }
 
+/// Format the startup banner for the watch command.
+pub fn format_startup_banner(tag: &str, repos: &[&config::RepoEntry]) -> String {
+    let mut lines = vec![startup_notification_body(tag)];
+    for repo in repos {
+        lines.push(format!("  {}/{}", url_basename(&repo.url), repo.branch));
+    }
+    lines.join("\n")
+}
+
+/// Format the startup notification body.
+pub fn startup_notification_body(tag: &str) -> String {
+    format!("Watching repositories with the {tag} tag")
+}
+
+/// Send a startup notification indicating watch has begun.
+fn send_startup_notification(tag: &str) {
+    if std::env::var("LUM_NO_NOTIFY").is_ok() {
+        return;
+    }
+    let summary = "lum watch".to_string();
+    let body = startup_notification_body(tag);
+    if let Err(e) = notify_rust::Notification::new()
+        .summary(&summary)
+        .body(&body)
+        .show()
+    {
+        eprintln!("warning: failed to send desktop notification: {e}");
+    }
+}
+
 fn load_state(path: &Path) -> Result<HashMap<String, String>> {
     if !path.exists() {
         return Ok(HashMap::new());
@@ -147,5 +179,46 @@ fn send_notification(basename: &str, branch: &str, short_sha: &str) {
         .show()
     {
         eprintln!("warning: failed to send desktop notification: {e}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn startup_message_with_matching_tag() {
+        let repos = vec![
+            config::RepoEntry {
+                url: "https://github.com/example/repo-a.git".into(),
+                branch: "main".into(),
+                tags: vec!["metrocargo".into()],
+            },
+            config::RepoEntry {
+                url: "https://github.com/example/repo-b.git".into(),
+                branch: "develop".into(),
+                tags: vec!["metrocargo".into(), "other".into()],
+            },
+        ];
+        let matching: Vec<_> = repos.iter().filter(|r| r.has_tag("metrocargo")).collect();
+        let banner = format_startup_banner("metrocargo", &matching);
+        assert_eq!(
+            banner,
+            "Watching repositories with the metrocargo tag\n  repo-a/main\n  repo-b/develop"
+        );
+    }
+
+    #[test]
+    fn startup_banner_with_no_repos() {
+        let repos: Vec<config::RepoEntry> = vec![];
+        let matching: Vec<_> = repos.iter().filter(|r| r.has_tag("nothing")).collect();
+        let banner = format_startup_banner("nothing", &matching);
+        assert_eq!(banner, "Watching repositories with the nothing tag");
+    }
+
+    #[test]
+    fn startup_notification_body_contains_tag() {
+        let body = startup_notification_body("metrocargo");
+        assert_eq!(body, "Watching repositories with the metrocargo tag");
     }
 }

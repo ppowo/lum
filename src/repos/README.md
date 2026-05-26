@@ -94,10 +94,11 @@ lum repos mirror watch <tag>
 
 ### Behavior
 
+- On startup: prints "Watching repositories with the {tag} tag" and lists each matching repo (basename/branch). Sends a desktop notification with the same message.
 - Polls every **5 minutes** (hardcoded, no CLI flag).
 - Uses `git ls-remote` per watched repo — no local clone needed, no mutations.
-- **First run**: records SHAs silently as baseline. No notifications.
-- **Subsequent runs**: if a SHA differs from the stored one, sends a desktop notification and updates state.
+- **First cycle**: records SHAs silently as baseline. No change notifications.
+- **Subsequent cycles**: if a SHA differs from the stored one, sends a desktop notification and updates state.
 - Ctrl+C to stop.
 
 ### State

@@ -547,7 +547,11 @@ fn mirror_watch_detects_sha_change() {
         .args(["repos", "mirror", "watch", "rebase", "--cycles", "1"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("HEAD changed").not());
+        .stdout(
+            predicates::str::contains("Watching repositories with the rebase tag")
+                .and(predicates::str::contains("remote/main"))
+                .and(predicates::str::contains("HEAD changed").not()),
+        );
 
     // Push a new commit to move the remote HEAD
     std::process::Command::new("git")

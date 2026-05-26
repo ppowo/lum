@@ -1,5 +1,6 @@
 use anyhow::Result;
 
+use super::ensure_git_on_path;
 use crate::cli::MirrorCommand;
 
 pub mod config;
@@ -94,12 +95,6 @@ fn list() -> Result<()> {
     Ok(())
 }
 
-fn ensure_git_on_path() -> Result<()> {
-    match std::process::Command::new("git").arg("--version").output() {
-        Ok(output) if output.status.success() => Ok(()),
-        _ => anyhow::bail!("git executable not found on PATH"),
-    }
-}
 fn sync(jobs: usize) -> Result<()> {
     ensure_git_on_path()?;
     let path = config::config_path()?;

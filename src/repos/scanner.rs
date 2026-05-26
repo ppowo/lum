@@ -2,6 +2,8 @@ use anyhow::Result;
 use clap::Args;
 use std::path::{Path, PathBuf};
 
+use super::ensure_git_on_path;
+
 #[derive(Debug, Args, Clone)]
 pub struct ScanArgs {
     /// Directory to scan. Defaults to the current directory.
@@ -156,13 +158,6 @@ fn inspect_repo(path: &Path) -> Result<RepoStatus> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     parse_git_status(&stdout)
-}
-
-fn ensure_git_on_path() -> Result<()> {
-    match std::process::Command::new("git").arg("--version").output() {
-        Ok(output) if output.status.success() => Ok(()),
-        _ => anyhow::bail!("git executable not found on PATH"),
-    }
 }
 
 fn parse_git_status(output: &str) -> Result<RepoStatus> {

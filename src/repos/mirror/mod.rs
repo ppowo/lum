@@ -4,6 +4,7 @@ use crate::cli::MirrorCommand;
 
 pub mod config;
 mod git;
+mod watch;
 
 pub fn run(command: MirrorCommand) -> Result<()> {
     match command {
@@ -21,9 +22,9 @@ pub fn run(command: MirrorCommand) -> Result<()> {
         MirrorCommand::List => list(),
         MirrorCommand::Sync { jobs } => sync(jobs),
         MirrorCommand::Status { jobs, offline } => status(jobs, offline),
+        MirrorCommand::Watch { tag, cycles } => watch::run(tag, cycles),
     }
 }
-
 fn mirror_dir() -> Result<std::path::PathBuf> {
     // Try XDG_DOCUMENTS_DIR first (for testability), then fall back to
     // the directories crate's resolution.

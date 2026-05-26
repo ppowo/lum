@@ -190,8 +190,15 @@ pub enum MirrorCommand {
         #[arg(long)]
         offline: bool,
     },
+    /// Watch mirror repos for upstream changes and send desktop notifications.
+    Watch {
+        /// Tag to filter repos by. Omit to see guidance.
+        tag: Option<String>,
+        /// Number of poll cycles to run. Test/support plumbing; omit for infinite (Ctrl+C to stop).
+        #[arg(long, hide = true)]
+        cycles: Option<usize>,
+    },
 }
-
 #[derive(Debug, Subcommand)]
 pub enum YtCommand {
     /// Download audio from YouTube URL(s).

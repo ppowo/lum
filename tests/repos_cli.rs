@@ -177,7 +177,9 @@ fn lum_with_xdg(home: &TempDir) -> Command {
     let mut cmd = Command::cargo_bin("lum").unwrap();
     cmd.env("XDG_CONFIG_HOME", home.path().join("config"))
         .env("XDG_DATA_HOME", home.path().join("data"))
-        .env("XDG_DOCUMENTS_DIR", home.path().join("Documents"));
+        .env("XDG_STATE_HOME", home.path().join("state"))
+        .env("XDG_DOCUMENTS_DIR", home.path().join("Documents"))
+        .env("LUM_NO_NOTIFY", "1");
     cmd
 }
 
@@ -412,4 +414,162 @@ fn mirror_status_runs_multiple_checks_concurrently() {
         started.elapsed() < std::time::Duration::from_millis(2800),
         "two two-second status checks should overlap when -j 2 is used"
     );
+}
+
+// --- mirror watch tests ---
+
+#[test]
+fn mirror_watch_without_tag_with_config_points_to_list() {
+    let home = TempDir::new().unwrap();
+    let config_dir = home.path().join("config").join("lum");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    std::fs::write(config_dir.join("repos.json"), r#"{"repos": []}"#).unwrap();
+    lum_with_xdg(&home)
+        .args(["repos", "mirror", "watch"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("mirror list"));
+}
+
+#[test]
+fn mirror_watch_without_tag_no_config_points_to_init() {
+    let home = TempDir::new().unwrap();
+    lum_with_xdg(&home)
+        .args(["repos", "mirror", "watch"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("mirror init"));
+}
+
+#[test]
+fn mirror_watch_with_tag_no_matching_repos() {
+    let home = TempDir::new().unwrap();
+    let config_dir = home.path().join("config").join("lum");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    std::fs::write(
+        config_dir.join("repos.json"),
+        r#"{"repos": [{"url": "https://github.com/org/repo.git", "branch": "main", "tags": ["other"]}]}"#,
+    )
+    .unwrap();
+
+    lum_with_xdg(&home)
+        .args(["repos", "mirror", "watch", "nonexistent"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("No repos found"));
+}
+
+#[test]
+fn mirror_watch_detects_sha_change() {
+    // Set up a local bare repo as the remote
+    let remote_dir = TempDir::new().unwrap();
+    let bare_path = remote_dir.path().join("remote.git");
+    let clone_path = remote_dir.path().join("clone");
+
+    // Create bare remote with one commit
+    std::process::Command::new("git")
+        .args(["init", "--bare"])
+        .arg(&bare_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["clone", &bare_path.to_string_lossy()])
+        .arg(&clone_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args([
+            "-C",
+            &clone_path.to_string_lossy(),
+            "config",
+            "user.email",
+            "test@test.com",
+        ])
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args([
+            "-C",
+            &clone_path.to_string_lossy(),
+            "config",
+            "user.name",
+            "Test",
+        ])
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args([
+            "-C",
+            &clone_path.to_string_lossy(),
+            "checkout",
+            "-b",
+            "main",
+        ])
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args([
+            "-C",
+            &clone_path.to_string_lossy(),
+            "commit",
+            "--allow-empty",
+            "-m",
+            "initial",
+        ])
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args([
+            "-C",
+            &clone_path.to_string_lossy(),
+            "push",
+            "-u",
+            "origin",
+            "main",
+        ])
+        .output()
+        .unwrap();
+
+    let url = format!("file://{}", bare_path.to_string_lossy());
+
+    // Set up lum config pointing to this remote
+    let home = TempDir::new().unwrap();
+    let config_dir = home.path().join("config").join("lum");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    let config_json = format!(
+        r#"{{"repos": [{{"url": "{}", "branch": "main", "tags": ["rebase"]}}]}}"#,
+        url.replace('\"', "\\\"")
+    );
+    std::fs::write(config_dir.join("repos.json"), &config_json).unwrap();
+
+    // First cycle: records baseline, no notification
+    lum_with_xdg(&home)
+        .args(["repos", "mirror", "watch", "rebase", "--cycles", "1"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("HEAD changed").not());
+
+    // Push a new commit to move the remote HEAD
+    std::process::Command::new("git")
+        .args([
+            "-C",
+            &clone_path.to_string_lossy(),
+            "commit",
+            "--allow-empty",
+            "-m",
+            "second",
+        ])
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["-C", &clone_path.to_string_lossy(), "push"])
+        .output()
+        .unwrap();
+
+    // Second cycle: should detect the change and report it
+    lum_with_xdg(&home)
+        .args(["repos", "mirror", "watch", "rebase", "--cycles", "1"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("HEAD changed"));
 }

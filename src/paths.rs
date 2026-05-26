@@ -72,6 +72,10 @@ pub(crate) fn repos_mirror_config_file() -> Result<PathBuf> {
     config_file("repos.json")
 }
 
+pub(crate) fn repos_mirror_watch_state_file() -> Result<PathBuf> {
+    state_dir("repos-watch-state.json")
+}
+
 pub(crate) fn yt_deps_dir() -> Result<PathBuf> {
     data_dir("deps")
 }

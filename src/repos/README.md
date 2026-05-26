@@ -12,6 +12,7 @@ lum repos mirror init
 lum repos mirror list
 lum repos mirror sync [-j N]
 lum repos mirror status [-j N] [--offline]
+lum repos mirror watch [TAG]
 ```
 
 ## Scanner (`repos scan`)
@@ -50,7 +51,7 @@ Maintains shallow (`--depth 1 --no-single-branch`) read-only clones under `~/Doc
 }
 ```
 
-- `url` is required and must start with `https://`, `git@`, or `ssh://`.
+- `url` is required and must start with `https://`, `git@`, `ssh://`, or `file://`.
 - `branch` defaults to `"main"`.
 - `tags` are optional metadata appended to directory names.
 
@@ -77,3 +78,32 @@ Where `basename` is the repo URL's last path segment with `.git` stripped, and `
 ### Safety
 
 `validate_in_mirror` ensures all git operations target paths inside the CodeMirror directory (path-traversal guard).
+
+## Watch (`repos mirror watch`)
+
+Long-running foreground process that polls mirror-configured remotes and sends a desktop notification when a tracked branch's HEAD SHA changes — signaling that it's time to rebase.
+
+### Usage
+
+```
+lum repos mirror watch <tag>
+```
+
+- `<tag>` selects repos by their configured `tags` field. Only repos matching that tag are watched.
+- Without `<tag>`: prints guidance (list tags via `mirror list`, or run `mirror init` if no repos configured) and exits.
+
+### Behavior
+
+- Polls every **5 minutes** (hardcoded, no CLI flag).
+- Uses `git ls-remote` per watched repo — no local clone needed, no mutations.
+- **First run**: records SHAs silently as baseline. No notifications.
+- **Subsequent runs**: if a SHA differs from the stored one, sends a desktop notification and updates state.
+- Ctrl+C to stop.
+
+### State
+
+`repos-watch-state.json` in lum's state directory. Maps `<url> <branch>` → last-known SHA.
+
+### Notification
+
+Via `notify-rust` crate. Body: `<repo-basename>/<branch> — HEAD changed to <short-sha>`.

@@ -65,7 +65,11 @@ fn validate_repos(repos: &[RepoEntry]) -> Result<()> {
 }
 
 fn validate_url(url: &str, entry: usize) -> Result<()> {
-    if url.starts_with("https://") || url.starts_with("git@") || url.starts_with("ssh://") {
+    if url.starts_with("https://")
+        || url.starts_with("git@")
+        || url.starts_with("ssh://")
+        || url.starts_with("file://")
+    {
         Ok(())
     } else {
         anyhow::bail!(

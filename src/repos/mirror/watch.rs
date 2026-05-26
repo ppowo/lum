@@ -87,15 +87,15 @@ pub fn check_cycle(repos: &[&config::RepoEntry], state_path: &Path) -> Result<Ve
 
         match git::git_remote_head(&repo.url, &repo.branch) {
             Ok(new_sha) => {
-                if let Some(old_sha) = state.get(&key) {
-                    if old_sha != &new_sha {
-                        changes.push(Change {
-                            basename,
-                            branch: repo.branch.clone(),
-                            old_sha: Some(old_sha.clone()),
-                            new_sha: new_sha.clone(),
-                        });
-                    }
+                if let Some(old_sha) = state.get(&key)
+                    && old_sha != &new_sha
+                {
+                    changes.push(Change {
+                        basename,
+                        branch: repo.branch.clone(),
+                        old_sha: Some(old_sha.clone()),
+                        new_sha: new_sha.clone(),
+                    });
                 }
                 state.insert(key, new_sha);
             }

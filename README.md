@@ -211,6 +211,8 @@ Scan a directory tree for Git repository status:
 lum repos scan <directory>
 ```
 
+By default this fetches each current branch's upstream remote before reporting ahead/behind status. Use `--offline` to compare against cached remote refs only.
+
 Mirror configured repositories:
 
 ```sh

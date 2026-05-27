@@ -43,9 +43,39 @@ fn create_dirty_repo(dir: &std::path::Path) {
     std::fs::write(dir.join("README"), "changed").expect("modify README");
 }
 
+fn git(dir: &std::path::Path, args: &[&str]) {
+    let output = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .expect("run git");
+    assert!(
+        output.status.success(),
+        "git {args:?} failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn git_stdout(dir: &std::path::Path, args: &[&str]) -> String {
+    let output = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .expect("run git");
+    assert!(output.status.success(), "git {args:?} failed");
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
 fn repos_scan_in(dir: &std::path::Path) -> Command {
     let mut cmd = Command::cargo_bin("lum").unwrap();
     cmd.args(["repos", "scan"]).current_dir(dir);
+    cmd
+}
+
+fn repos_scan_offline_in(dir: &std::path::Path) -> Command {
+    let mut cmd = Command::cargo_bin("lum").unwrap();
+    cmd.args(["repos", "scan", "--offline"]).current_dir(dir);
     cmd
 }
 
@@ -64,6 +94,37 @@ fn scan_reports_clean_repo() {
 }
 
 #[test]
+fn scan_notes_when_branch_has_no_upstream() {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path().join("no-upstream");
+    std::fs::create_dir_all(&repo).unwrap();
+    create_clean_repo(&repo);
+
+    repos_scan_in(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("no-upstream"))
+        .stdout(predicates::str::contains(
+            "none; fetch skipped (no upstream)",
+        ));
+}
+
+#[test]
+fn scan_notes_when_repo_is_detached() {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path().join("detached");
+    std::fs::create_dir_all(&repo).unwrap();
+    create_clean_repo(&repo);
+    git(&repo, &["checkout", "--detach"]);
+
+    repos_scan_in(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("detached"))
+        .stdout(predicates::str::contains("fetch skipped (detached HEAD)"));
+}
+
+#[test]
 fn scan_reports_dirty_repo() {
     let tmp = TempDir::new().unwrap();
     let repo = tmp.path().join("dirty-repo");
@@ -75,6 +136,139 @@ fn scan_reports_dirty_repo() {
         .success()
         .stdout(predicates::str::contains("dirty-repo"))
         .stdout(predicates::str::contains("has uncommitted changes"));
+}
+
+#[test]
+fn scan_fetches_before_reporting_upstream_status() {
+    let tmp = TempDir::new().unwrap();
+    let origin = tmp.path().join("origin.git");
+    let first = tmp.path().join("first");
+    let second = tmp.path().join("second");
+    let scan_root = tmp.path().join("scan-root");
+    let scanned = scan_root.join("scanned");
+
+    git(tmp.path(), &["init", "--bare", origin.to_str().unwrap()]);
+    git(
+        tmp.path(),
+        &["clone", origin.to_str().unwrap(), first.to_str().unwrap()],
+    );
+    git(&first, &["config", "user.email", "test@example.com"]);
+    git(&first, &["config", "user.name", "Test"]);
+    git(&first, &["checkout", "-b", "main"]);
+    std::fs::write(first.join("README"), "one").unwrap();
+    git(&first, &["add", "README"]);
+    git(&first, &["commit", "-m", "init"]);
+    git(&first, &["push", "-u", "origin", "main"]);
+    git(&origin, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+
+    std::fs::create_dir_all(&scan_root).unwrap();
+    git(
+        &scan_root,
+        &["clone", origin.to_str().unwrap(), scanned.to_str().unwrap()],
+    );
+
+    git(
+        tmp.path(),
+        &["clone", origin.to_str().unwrap(), second.to_str().unwrap()],
+    );
+    git(&second, &["config", "user.email", "test@example.com"]);
+    git(&second, &["config", "user.name", "Test"]);
+    std::fs::write(second.join("README"), "two").unwrap();
+    git(&second, &["commit", "-am", "advance origin"]);
+    git(&second, &["push"]);
+
+    repos_scan_in(&scan_root)
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("scanned"))
+        .stdout(predicates::str::contains("behind origin/main; [behind 1]"));
+}
+
+#[test]
+fn scan_offline_uses_cached_refs_without_fetching() {
+    let tmp = TempDir::new().unwrap();
+    let origin = tmp.path().join("origin.git");
+    let first = tmp.path().join("first");
+    let second = tmp.path().join("second");
+    let scan_root = tmp.path().join("scan-root");
+    let scanned = scan_root.join("scanned");
+
+    git(tmp.path(), &["init", "--bare", origin.to_str().unwrap()]);
+    git(
+        tmp.path(),
+        &["clone", origin.to_str().unwrap(), first.to_str().unwrap()],
+    );
+    git(&first, &["config", "user.email", "test@example.com"]);
+    git(&first, &["config", "user.name", "Test"]);
+    git(&first, &["checkout", "-b", "main"]);
+    std::fs::write(first.join("README"), "one").unwrap();
+    git(&first, &["add", "README"]);
+    git(&first, &["commit", "-m", "init"]);
+    git(&first, &["push", "-u", "origin", "main"]);
+    git(&origin, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+
+    std::fs::create_dir_all(&scan_root).unwrap();
+    git(
+        &scan_root,
+        &["clone", origin.to_str().unwrap(), scanned.to_str().unwrap()],
+    );
+
+    git(
+        tmp.path(),
+        &["clone", origin.to_str().unwrap(), second.to_str().unwrap()],
+    );
+    git(&second, &["config", "user.email", "test@example.com"]);
+    git(&second, &["config", "user.name", "Test"]);
+    std::fs::write(second.join("README"), "two").unwrap();
+    git(&second, &["commit", "-am", "advance origin"]);
+    git(&second, &["push"]);
+
+    repos_scan_offline_in(&scan_root)
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("synced with origin/main"))
+        .stdout(predicates::str::contains("behind origin/main").not())
+        .stderr(predicates::str::contains(
+            "info: offline mode; using cached remote refs only",
+        ));
+}
+
+#[test]
+fn scan_reports_fetch_failure_without_failing_command() {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path().join("bad-remote");
+    std::fs::create_dir_all(&repo).unwrap();
+    create_clean_repo(&repo);
+    let branch = git_stdout(&repo, &["branch", "--show-current"]);
+    git(
+        &repo,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "file:///definitely/missing/lum-test.git",
+        ],
+    );
+    git(
+        &repo,
+        &["config", &format!("branch.{branch}.remote"), "origin"],
+    );
+    git(
+        &repo,
+        &[
+            "config",
+            &format!("branch.{branch}.merge"),
+            &format!("refs/heads/{branch}"),
+        ],
+    );
+
+    repos_scan_in(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "fetch failed; status may be stale",
+        ))
+        .stderr(predicates::str::contains("warning: git fetch failed"));
 }
 
 #[test]

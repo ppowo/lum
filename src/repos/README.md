@@ -17,7 +17,7 @@ lum repos mirror watch [TAG]
 
 ## Scanner (`repos scan`)
 
-Walks a directory tree looking for `.git/` directories. For each repo found, runs `git status --porcelain=v1 --branch` and parses the output into:
+Walks a directory tree looking for `.git/` directories. By default, for each repo with a current-branch upstream, runs `git fetch --no-tags --no-recurse-submodules <upstream-remote>` before `git status --porcelain=v1 --branch`. This updates remote-tracking refs but does not modify the worktree. Use `--offline` to avoid contacting remotes or updating refs.
 
 - **Branch** (including detached HEAD)
 - **Worktree status** (clean / has uncommitted changes)
@@ -29,7 +29,8 @@ Output: `<path>  <branch>  <status>; <upstream-sync>`
 |------|---------|
 | `[PATH]` | Scan root; defaults to `.` |
 | `--hidden` | Descend into dot-prefixed directories |
-| `-j N` | Max concurrent git operations (default 4, not yet implemented) |
+| `--offline` | Use cached remote refs only; do not fetch |
+| `-j N` | Max concurrent git operations (default 4) |
 
 Skips symlinks, `.git/` directories, and (by default) hidden directories. Reports nested repos.
 

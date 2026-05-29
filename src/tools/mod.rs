@@ -13,7 +13,7 @@ use crate::cli::ToolsCommand;
 
 pub fn run(command: ToolsCommand) -> Result<()> {
     match command {
-        ToolsCommand::Ls => list(),
+        ToolsCommand::List => list(),
         ToolsCommand::Install { tool, force } => install_cmd(&tool, force),
         ToolsCommand::Status { tool } => status_cmd(&tool),
         ToolsCommand::Sync { dry_run } => sync_cmd(dry_run),

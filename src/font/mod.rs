@@ -9,7 +9,7 @@ use crate::cli::FontCommand;
 
 pub fn run(command: FontCommand) -> Result<()> {
     match command {
-        FontCommand::Ls => list(),
+        FontCommand::List => list(),
         FontCommand::Install { font, force } => install_cmd(&font, force),
         FontCommand::Uninstall { font } => uninstall_cmd(&font),
     }

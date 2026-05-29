@@ -100,6 +100,7 @@ pub enum EnvCommand {
         alias: String,
     },
     /// Show managed aliases and forced defaults.
+    #[command(visible_alias = "ls")]
     List,
     /// Show alias to environment variable mappings.
     Aliases,
@@ -116,7 +117,8 @@ pub enum ToolsCommand {
         force: bool,
     },
     /// List managed tools and local state.
-    Ls,
+    #[command(visible_alias = "ls")]
+    List,
     /// Show detailed status for one tool.
     Status { tool: String },
     /// Install missing tools and update outdated tools.
@@ -174,6 +176,7 @@ pub enum MirrorCommand {
     /// Create a sample mirror config file if none exists.
     Init,
     /// List configured mirror repositories.
+    #[command(visible_alias = "ls")]
     List,
     /// Clone or update all configured mirror repositories.
     Sync {
@@ -227,7 +230,8 @@ pub enum YtCommand {
 #[derive(Debug, Subcommand)]
 pub enum FontCommand {
     /// List managed fonts and local state.
-    Ls,
+    #[command(visible_alias = "ls")]
+    List,
     /// Install a managed font.
     Install {
         font: String,

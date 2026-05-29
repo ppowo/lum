@@ -68,18 +68,24 @@ mod output_dirs {
     use std::path::PathBuf;
 
     pub fn audio_dir() -> PathBuf {
-        dirs::audio_dir().unwrap_or_else(|| {
-            crate::paths::home_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join("Music")
-        })
+        if let Some(dirs) = directories::UserDirs::new()
+            && let Some(audio) = dirs.audio_dir()
+        {
+            return audio.to_path_buf();
+        }
+        crate::paths::home_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("Music")
     }
 
     pub fn video_dir() -> PathBuf {
-        dirs::video_dir().unwrap_or_else(|| {
-            crate::paths::home_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join("Movies")
-        })
+        if let Some(dirs) = directories::UserDirs::new()
+            && let Some(video) = dirs.video_dir()
+        {
+            return video.to_path_buf();
+        }
+        crate::paths::home_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("Movies")
     }
 }

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use directories::ProjectDirs;
+use directories::{ProjectDirs, UserDirs};
 
 fn project_dirs() -> Result<ProjectDirs> {
     ProjectDirs::from("dev", "ppowo", "lum").context("failed to determine platform directories")
@@ -86,7 +86,7 @@ pub(crate) fn log_dir() -> Result<PathBuf> {
 
 /// Resolve home directory or bail.
 pub(crate) fn home_dir() -> Result<PathBuf> {
-    dirs::home_dir().ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))
+    UserDirs::new().map(|d| d.home_dir().to_path_buf()).context("cannot determine home directory")
 }
 
 /// Join a relative path to the home directory.
@@ -97,7 +97,7 @@ pub(crate) fn home_path(relative: &str) -> Result<PathBuf> {
 /// Expand a `~/` prefix to the home directory, if present.
 pub(crate) fn expand_path(path: &str) -> PathBuf {
     if let Some(rest) = path.strip_prefix("~/")
-        && let Some(home) = dirs::home_dir()
+        && let Some(home) = UserDirs::new().map(|d| d.home_dir().to_path_buf())
     {
         return home.join(rest);
     }

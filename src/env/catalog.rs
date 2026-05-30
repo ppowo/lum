@@ -1,4 +1,5 @@
 pub(crate) const ALIASES: &[(&str, &str)] = &[
+    ("crof", "CROF_API_KEY"),
     ("exa", "EXA_API_KEY"),
     ("neuralwatt", "NEURALWATT_API_KEY"),
     ("openrouter", "OPENROUTER_API_KEY"),

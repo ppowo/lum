@@ -4,6 +4,7 @@ pub(crate) const ALIASES: &[(&str, &str)] = &[
     ("neuralwatt", "NEURALWATT_API_KEY"),
     ("openrouter", "OPENROUTER_API_KEY"),
     ("synthetic", "SYNTHETIC_API_KEY"),
+    ("opencode", "OPENCODE_API_KEY"),
 ];
 
 pub(crate) const FORCED_ENV: &[(&str, &str)] = &[("npm_config_ignore_scripts", "true")];

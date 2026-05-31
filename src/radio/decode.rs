@@ -61,6 +61,19 @@ pub fn stream_station(station: Station, writer: AudioWriter, stop: Arc<AtomicBoo
         url = station.url,
         "opening station stream"
     );
+
+    const MAX_RECONNECTS: u32 = 5;
+
+    decode_with_retry(
+        &mut || try_decode_session(station, writer.clone(), &stop),
+        &mut || Ok(()),
+        is_reconnectable_err,
+        MAX_RECONNECTS,
+        &stop,
+    )
+}
+
+fn try_decode_session(station: Station, writer: AudioWriter, stop: &AtomicBool) -> Result<()> {
     let mut format = open_station_format(station)?;
     let track = format
         .default_track(TrackType::Audio)
@@ -70,10 +83,6 @@ pub fn stream_station(station: Station, writer: AudioWriter, stop: Arc<AtomicBoo
         .as_ref()
         .and_then(|params| params.audio())
         .context("audio track has no codec parameters")?;
-
-    // Some live streams do not expose full channel metadata until packets are decoded.
-    // Validate decoded buffers below instead of rejecting incomplete probe metadata.
-
     let track_id = track.id;
     let mut decoder = symphonia::default::get_codecs()
         .make_audio_decoder(params, &AudioDecoderOptions::default())
@@ -101,10 +110,10 @@ pub fn stream_station(station: Station, writer: AudioWriter, stop: Arc<AtomicBoo
                 samples.resize(buffer.samples_interleaved(), f32::MID);
                 buffer.copy_to_slice_interleaved(&mut samples);
                 let output = normalizer.normalize(buffer.spec(), &samples)?;
-                writer.push_samples(&output, &stop);
+                writer.push_samples(&output, stop);
             }
             Err(SymphoniaError::DecodeError(error)) => {
-                tracing::warn!(error = %error, "skipping undecodable packet")
+                tracing::warn!(error = %error, "skipping undecodable packet");
             }
             Err(error) => return Err(error).context("failed to decode audio packet"),
         }
@@ -170,7 +179,7 @@ pub(crate) fn probe_station_decode(station: Station, packets_to_decode: usize) -
 
 fn open_station_format(station: Station) -> Result<Box<dyn FormatReader>> {
     let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(15))
+        .connect_timeout(Duration::from_secs(15))
         .build()
         .context("failed to build HTTP client")?;
     let response = client
@@ -196,6 +205,56 @@ fn open_station_format(station: Station) -> Result<Box<dyn FormatReader>> {
             MetadataOptions::default(),
         )
         .context("failed to detect stream format")
+}
+/// Returns `true` if the error is a reconnectable I/O error from the underlying HTTP stream.
+pub(crate) fn is_reconnectable_err(err: &anyhow::Error) -> bool {
+    for cause in err.chain() {
+        if let Some(SymphoniaError::IoError(io_err)) = cause.downcast_ref::<SymphoniaError>() {
+            return io_err.kind() != std::io::ErrorKind::Interrupted;
+        }
+    }
+    false
+}
+
+/// Run a decode session with automatic reconnection on I/O errors.
+///
+/// The `attempt` closure performs one decode session. If it returns an error that
+/// `is_reconnectable` classifies as reconnectable, `reconnect` is called (to re-open
+/// the stream), and the attempt is retried up to `max_reconnects` times.
+///
+/// If `stop` is signaled during the retry loop, the loop exits immediately.
+pub(crate) fn decode_with_retry(
+    attempt: &mut dyn FnMut() -> Result<()>,
+    reconnect: &mut dyn FnMut() -> Result<()>,
+    is_reconnectable: fn(&anyhow::Error) -> bool,
+    max_reconnects: u32,
+    stop: &AtomicBool,
+) -> Result<()> {
+    let mut reconnects = 0u32;
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            // If already stopped, don't attempt a decode session.
+            // Return a generic error so the caller doesn't hang.
+            anyhow::bail!("stopped");
+        }
+
+        match attempt() {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                if is_reconnectable(&e) && reconnects < max_reconnects {
+                    reconnects += 1;
+                    tracing::warn!(
+                        reconnects,
+                        error = %e,
+                        "reconnecting after stream error"
+                    );
+                    reconnect().context("failed to reconnect stream")?;
+                    continue;
+                }
+                return Err(e);
+            }
+        }
+    }
 }
 
 struct AudioNormalizer {
@@ -334,7 +393,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn normalizes_to_the_output_device_sample_rate() {
         use symphonia::core::audio::{AudioSpec, layouts::CHANNEL_LAYOUT_MONO};
@@ -371,5 +429,132 @@ mod tests {
         assert_eq!(first.len() % 2, 0);
         assert_eq!(second.len() % 2, 0);
         assert_ne!(second, stateless_second);
+    }
+
+    use anyhow::anyhow;
+    use std::sync::atomic::AtomicBool;
+
+    #[test]
+    fn retry_wraps_decode_attempt_and_reconnects_on_io_error() {
+        let mut attempts = 0;
+        let mut reconnects = 0;
+        let stop = AtomicBool::new(false);
+
+        let result = super::decode_with_retry(
+            &mut || {
+                attempts += 1;
+                if attempts == 1 {
+                    Err(anyhow!(symphonia::core::errors::Error::IoError(
+                        std::io::Error::new(std::io::ErrorKind::ConnectionAborted, "stream closed")
+                    )))
+                } else {
+                    Ok(())
+                }
+            },
+            &mut || {
+                reconnects += 1;
+                Ok(())
+            },
+            super::is_reconnectable_err,
+            3,
+            &stop,
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(attempts, 2, "should retry once after first failure");
+        assert_eq!(reconnects, 1, "should call reconnect once");
+    }
+
+    #[test]
+    fn retry_exhausts_max_reconnects_and_bails() {
+        let mut attempts = 0;
+        let mut reconnects = 0;
+        let stop = AtomicBool::new(false);
+
+        let result = super::decode_with_retry(
+            &mut || {
+                attempts += 1;
+                Err(anyhow!(symphonia::core::errors::Error::IoError(
+                    std::io::Error::new(std::io::ErrorKind::ConnectionAborted, "stream closed")
+                )))
+            },
+            &mut || {
+                reconnects += 1;
+                Ok(())
+            },
+            super::is_reconnectable_err,
+            3,
+            &stop,
+        );
+
+        assert!(result.is_err(), "should fail after exhausting retries");
+        assert_eq!(
+            attempts, 4,
+            "should attempt 4 times (1 initial + 3 retries)"
+        );
+        assert_eq!(reconnects, 3, "should reconnect 3 times");
+    }
+
+    #[test]
+    fn non_reconnectable_error_does_not_retry() {
+        let mut attempts = 0;
+        let mut reconnects = 0;
+        let stop = AtomicBool::new(false);
+
+        let result = super::decode_with_retry(
+            &mut || {
+                attempts += 1;
+                Err(anyhow!(symphonia::core::errors::Error::DecodeError(
+                    "bad data"
+                )))
+            },
+            &mut || {
+                reconnects += 1;
+                Ok(())
+            },
+            super::is_reconnectable_err,
+            3,
+            &stop,
+        );
+
+        assert!(result.is_err());
+        assert_eq!(attempts, 1, "should not retry on non-reconnectable error");
+        assert_eq!(reconnects, 0, "should not reconnect");
+    }
+
+    #[test]
+    fn stop_signal_during_retry_loop_exits_early() {
+        let stop = AtomicBool::new(true);
+        let result = super::decode_with_retry(
+            &mut || {
+                Err(anyhow!(symphonia::core::errors::Error::IoError(
+                    std::io::Error::new(std::io::ErrorKind::ConnectionAborted, "stream closed")
+                )))
+            },
+            &mut || Ok(()),
+            super::is_reconnectable_err,
+            3,
+            &stop,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn is_reconnectable_err_identifies_io_errors() {
+        use symphonia::core::errors::Error as SErr;
+
+        assert!(super::is_reconnectable_err(&anyhow!(SErr::IoError(
+            std::io::Error::new(std::io::ErrorKind::ConnectionAborted, "dropped")
+        ))));
+        assert!(!super::is_reconnectable_err(&anyhow!(SErr::DecodeError(
+            "bad packet"
+        ))));
+        assert!(!super::is_reconnectable_err(&anyhow!(SErr::Unsupported(
+            "some feature"
+        ))));
+        assert!(!super::is_reconnectable_err(&anyhow!(SErr::IoError(
+            std::io::Error::new(std::io::ErrorKind::Interrupted, "interrupted")
+        ))));
+        assert!(!super::is_reconnectable_err(&anyhow!("some random error")));
     }
 }

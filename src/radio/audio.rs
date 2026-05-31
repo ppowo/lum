@@ -150,7 +150,6 @@ fn err_fn(error: cpal::StreamError) {
     eprintln!("audio stream error: {error}");
 }
 
-
 fn output_sample<T>(sample: f32) -> T
 where
     T: SizedSample + FromSample<f32>,
@@ -190,7 +189,6 @@ mod tests {
         assert_eq!(playback.sample_rate, 48_000);
         assert_eq!(playback.channels, 2);
     }
-
 
     #[test]
     fn f32_output_preserves_sample_amplitude() {

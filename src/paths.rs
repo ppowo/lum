@@ -86,7 +86,9 @@ pub(crate) fn log_dir() -> Result<PathBuf> {
 
 /// Resolve home directory or bail.
 pub(crate) fn home_dir() -> Result<PathBuf> {
-    UserDirs::new().map(|d| d.home_dir().to_path_buf()).context("cannot determine home directory")
+    UserDirs::new()
+        .map(|d| d.home_dir().to_path_buf())
+        .context("cannot determine home directory")
 }
 
 /// Join a relative path to the home directory.

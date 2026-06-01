@@ -1,17 +1,274 @@
 use std::{
-    io::{self, Read},
+    io::{self, Cursor, Read},
     path::{Path, PathBuf},
     process::{Child, ChildStdout, Command, Stdio},
+    time::{Duration, SystemTime},
 };
 
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+
+use crate::artifact;
+
+const STALE_THRESHOLD: Duration = Duration::from_secs(14 * 24 * 60 * 60);
+const TEST_ARTIFACT_ENV: &str = "LUM_FFMPEG_TEST_ARTIFACT";
+const DISABLE_AUTO_PROVISION_ENV: &str = "LUM_FFMPEG_DISABLE_AUTO_PROVISION";
 
 /// Resolve the ffmpeg binary to use.
 ///
-/// Today this is PATH-only. Keep callers behind this seam so static ffmpeg
-/// provisioning can be added here later without changing radio or yt code.
-pub(crate) fn resolve() -> Result<PathBuf> {
-    which::which("ffmpeg").context("ffmpeg is not installed or not on $PATH")
+/// 1. If ffmpeg is on $PATH, use that.
+/// 2. Otherwise, use the auto-provisioned copy at `data_dir()/deps/ffmpeg`.
+///    If the auto-provisioned copy doesn't exist yet, download it.
+///    If it exists but is stale (>14 days since download), re-download it.
+pub(crate) async fn resolve() -> Result<PathBuf> {
+    if let Ok(path) = which::which("ffmpeg") {
+        tracing::debug!("using ffmpeg from PATH: {}", path.display());
+        return Ok(path);
+    }
+
+    if auto_provision_disabled() || cfg!(target_os = "macos") {
+        return Err(not_installed_error());
+    }
+
+    let dir = deps_dir()?;
+    let local = dir.join(ffmpeg_binary_name());
+    let state_path = dir.join("ffmpeg.json");
+
+    if local.exists() {
+        if is_stale(&state_path) {
+            tracing::info!("auto-provisioned ffmpeg is stale, refreshing");
+            if let Err(error) = try_update(&local, &state_path).await {
+                tracing::warn!(error = %error, "failed to update ffmpeg; using cached copy");
+            }
+        }
+        return Ok(local);
+    }
+
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("failed to create deps dir {}", dir.display()))?;
+    install_ffmpeg(&local, &state_path).await?;
+    Ok(local)
+}
+
+fn auto_provision_disabled() -> bool {
+    std::env::var_os(DISABLE_AUTO_PROVISION_ENV).is_some()
+}
+
+fn not_installed_error() -> anyhow::Error {
+    anyhow::anyhow!(
+        "ffmpeg is not installed. Install it:\n  \
+         macOS: brew install ffmpeg\n  \
+         Linux: sudo apt install ffmpeg\n  \
+         Windows: scoop install ffmpeg"
+    )
+}
+
+fn is_stale(state_path: &Path) -> bool {
+    let data = match std::fs::read_to_string(state_path) {
+        Ok(data) => data,
+        Err(_) => return true,
+    };
+    let state: FfmpegState = match serde_json::from_str(&data) {
+        Ok(state) => state,
+        Err(_) => return true,
+    };
+    let last_downloaded = match state.last_downloaded {
+        Some(ts) => SystemTime::UNIX_EPOCH + Duration::from_secs(ts),
+        None => return true,
+    };
+    SystemTime::now()
+        .duration_since(last_downloaded)
+        .unwrap_or(Duration::ZERO)
+        > STALE_THRESHOLD
+}
+
+async fn try_update(local: &Path, state_path: &Path) -> Result<()> {
+    install_ffmpeg(local, state_path).await
+}
+
+async fn install_ffmpeg(local: &Path, state_path: &Path) -> Result<()> {
+    if let Ok(test_artifact) = std::env::var(TEST_ARTIFACT_ENV) {
+        install_from_local_artifact(Path::new(&test_artifact), local, state_path)?;
+        return Ok(());
+    }
+
+    download_ffmpeg(local, state_path).await
+}
+
+async fn download_ffmpeg(local: &Path, state_path: &Path) -> Result<()> {
+    let asset = target_asset()?;
+    let info = fetch_latest_release_info(asset.name).await?;
+    tracing::info!("downloading ffmpeg from {}", info.download_url);
+
+    let archive_data = reqwest::get(&info.download_url)
+        .await
+        .with_context(|| format!("failed to download ffmpeg from {}", info.download_url))?
+        .error_for_status()?
+        .bytes()
+        .await?;
+
+    extract_and_install(asset.kind, &archive_data, local)?;
+    write_state(state_path)
+}
+
+struct ReleaseInfo {
+    download_url: String,
+}
+
+async fn fetch_latest_release_info(asset_name: &str) -> Result<ReleaseInfo> {
+    let repo = "BtbN/FFmpeg-Builds";
+    let url = format!("https://api.github.com/repos/{repo}/releases/latest");
+    let resp: serde_json::Value = reqwest::Client::new()
+        .get(&url)
+        .header("User-Agent", "lum")
+        .send()
+        .await
+        .with_context(|| format!("failed to query GitHub API for {repo}"))?
+        .error_for_status()?
+        .json()
+        .await?;
+
+    let download_url = resp["assets"]
+        .as_array()
+        .and_then(|assets| {
+            assets
+                .iter()
+                .find(|asset| asset["name"].as_str() == Some(asset_name))
+        })
+        .and_then(|asset| asset["browser_download_url"].as_str())
+        .with_context(|| format!("GitHub release missing asset '{asset_name}'"))?
+        .to_string();
+
+    Ok(ReleaseInfo { download_url })
+}
+
+#[derive(Clone, Copy)]
+enum ArchiveKind {
+    TarXz,
+    Zip,
+}
+
+struct TargetAsset {
+    name: &'static str,
+    kind: ArchiveKind,
+}
+
+fn target_asset() -> Result<TargetAsset> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("linux", "x86_64") => Ok(TargetAsset {
+            name: "ffmpeg-master-latest-linux64-gpl.tar.xz",
+            kind: ArchiveKind::TarXz,
+        }),
+        ("linux", "aarch64") => Ok(TargetAsset {
+            name: "ffmpeg-master-latest-linuxarm64-gpl.tar.xz",
+            kind: ArchiveKind::TarXz,
+        }),
+        ("windows", "x86_64") => Ok(TargetAsset {
+            name: "ffmpeg-master-latest-win64-gpl.zip",
+            kind: ArchiveKind::Zip,
+        }),
+        ("windows", "aarch64") => Ok(TargetAsset {
+            name: "ffmpeg-master-latest-winarm64-gpl.zip",
+            kind: ArchiveKind::Zip,
+        }),
+        _ => Err(not_installed_error()).with_context(|| {
+            format!(
+                "ffmpeg auto-provisioning is not supported on {} {}",
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            )
+        }),
+    }
+}
+
+fn extract_and_install(kind: ArchiveKind, archive_data: &[u8], local: &Path) -> Result<()> {
+    match kind {
+        ArchiveKind::TarXz => extract_tar_xz_ffmpeg(archive_data, local),
+        ArchiveKind::Zip => extract_zip_ffmpeg(archive_data, local),
+    }
+}
+
+fn extract_tar_xz_ffmpeg(archive_data: &[u8], local: &Path) -> Result<()> {
+    let decoder = xz2::read::XzDecoder::new(Cursor::new(archive_data));
+    let mut archive = tar::Archive::new(decoder);
+
+    for entry in archive
+        .entries()
+        .context("failed to read ffmpeg tar archive")?
+    {
+        let mut entry = entry?;
+        let path = entry.path()?;
+        if path.ends_with(Path::new("bin").join("ffmpeg")) {
+            let temp = tempfile::NamedTempFile::new()?;
+            entry.unpack(temp.path())?;
+            artifact::install_executable(temp.path(), local)?;
+            return Ok(());
+        }
+    }
+
+    anyhow::bail!("ffmpeg binary not found in downloaded archive")
+}
+
+fn extract_zip_ffmpeg(archive_data: &[u8], local: &Path) -> Result<()> {
+    let reader = Cursor::new(archive_data);
+    let mut archive = zip::ZipArchive::new(reader).context("failed to read ffmpeg zip archive")?;
+
+    for index in 0..archive.len() {
+        let mut file = archive.by_index(index)?;
+        let path = Path::new(file.name());
+        if path.ends_with(Path::new("bin").join("ffmpeg.exe")) {
+            let temp = tempfile::NamedTempFile::new()?;
+            let mut out = std::fs::File::create(temp.path())?;
+            io::copy(&mut file, &mut out)?;
+            artifact::install_executable(temp.path(), local)?;
+            return Ok(());
+        }
+    }
+
+    anyhow::bail!("ffmpeg.exe binary not found in downloaded archive")
+}
+
+fn install_from_local_artifact(source: &Path, local: &Path, state_path: &Path) -> Result<()> {
+    artifact::install_executable(source, local).with_context(|| {
+        format!(
+            "failed to copy test ffmpeg artifact from {} to {}",
+            source.display(),
+            local.display()
+        )
+    })?;
+    write_state(state_path)
+}
+
+fn write_state(state_path: &Path) -> Result<()> {
+    let state = FfmpegState {
+        last_downloaded: Some(now_epoch_secs()),
+    };
+    std::fs::write(state_path, serde_json::to_string_pretty(&state)?)?;
+    Ok(())
+}
+
+fn deps_dir() -> Result<PathBuf> {
+    crate::paths::yt_deps_dir()
+}
+
+fn ffmpeg_binary_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "ffmpeg.exe"
+    } else {
+        "ffmpeg"
+    }
+}
+
+fn now_epoch_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct FfmpegState {
+    last_downloaded: Option<u64>,
 }
 
 pub(crate) struct PcmStdout {

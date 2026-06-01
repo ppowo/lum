@@ -20,7 +20,7 @@ pub async fn run(command: YtCommand) -> Result<()> {
             run_yt_dlp(&yt_dlp, &args, &dest_dir, &urls)
         }
         YtCommand::Vid { height, urls } => {
-            check_ffmpeg()?;
+            check_ffmpeg().await?;
             let args = args::video_args(height);
             let dest_dir = output_dirs::video_dir();
             run_yt_dlp(&yt_dlp, &args, &dest_dir, &urls)
@@ -33,13 +33,10 @@ pub async fn run(command: YtCommand) -> Result<()> {
     }
 }
 
-fn check_ffmpeg() -> Result<()> {
-    ffmpeg::resolve().map(|_| ()).map_err(|_| {
+async fn check_ffmpeg() -> Result<()> {
+    ffmpeg::resolve().await.map(|_| ()).map_err(|error| {
         anyhow::anyhow!(
-            "ffmpeg is not installed. Install it:\n  \
-             macOS: brew install ffmpeg\n  \
-             Linux: sudo apt install ffmpeg\n  \
-             Windows: scoop install ffmpeg"
+            "ffmpeg is not available: {error}\n\nInstall it manually or let lum auto-provision it on Linux/Windows."
         )
     })
 }

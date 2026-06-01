@@ -13,7 +13,7 @@ lum yt alb <URL...>             # Album/playlist → ~/Music
 ## Dependencies
 
 - **yt-dlp** — required. If not on `$PATH`, lum auto-provisions it to `data_dir()/deps/` (see ADR 0005).
-- **ffmpeg** — required for muxing video+audio streams. Not auto-provisioned.
+- **ffmpeg** — required for video muxing. If not on `$PATH`, lum auto-provisions it on Linux/Windows from BtbN FFmpeg-Builds to `data_dir()/deps/`; macOS remains PATH-only.
 
 ## Architecture
 

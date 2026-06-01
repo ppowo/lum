@@ -7,7 +7,10 @@ fn version_includes_package_version() {
         .arg("--version")
         .assert()
         .success()
-        .stdout(predicates::str::contains("lum 0.2.0"));
+        .stdout(predicates::str::contains(format!(
+            "lum {}",
+            env!("CARGO_PKG_VERSION")
+        )));
 }
 
 #[test]

@@ -51,7 +51,9 @@ async fn play(station: Station) -> Result<()> {
 
     let (yt_dlp, ffmpeg) = if station.kind == stations::StationKind::YouTube {
         let yt_dlp = resolve_yt_dlp().await?;
-        let ffmpeg = ffmpeg::resolve().context("YouTube radio stations require ffmpeg")?;
+        let ffmpeg = ffmpeg::resolve()
+            .await
+            .context("YouTube radio stations require ffmpeg")?;
         (Some(yt_dlp), Some(ffmpeg))
     } else {
         (None, None)

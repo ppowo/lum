@@ -2,6 +2,7 @@ mod artifact;
 mod backup;
 mod cli;
 mod env;
+mod ffmpeg;
 mod font;
 mod git_id;
 mod logging;

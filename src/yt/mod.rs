@@ -1,11 +1,14 @@
 pub mod args;
 mod deps;
 
+pub(crate) use deps::resolve_yt_dlp;
+
 use std::path::Path;
 
 use anyhow::Result;
 
 use crate::cli::YtCommand;
+use crate::ffmpeg;
 
 pub async fn run(command: YtCommand) -> Result<()> {
     let yt_dlp = deps::resolve_yt_dlp().await?;
@@ -31,15 +34,14 @@ pub async fn run(command: YtCommand) -> Result<()> {
 }
 
 fn check_ffmpeg() -> Result<()> {
-    if which::which("ffmpeg").is_err() {
-        anyhow::bail!(
+    ffmpeg::resolve().map(|_| ()).map_err(|_| {
+        anyhow::anyhow!(
             "ffmpeg is not installed. Install it:\n  \
              macOS: brew install ffmpeg\n  \
              Linux: sudo apt install ffmpeg\n  \
              Windows: scoop install ffmpeg"
-        );
-    }
-    Ok(())
+        )
+    })
 }
 
 fn run_yt_dlp(

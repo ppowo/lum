@@ -10,26 +10,27 @@
 
 ## Playback Stack
 
-Use the pure Rust stack recorded in ADR 0002:
+Direct audio stations use the pure Rust stack recorded in ADR 0002:
 
 - `reqwest` with `rustls` for direct HTTPS audio streams.
-- `symphonia` for decoding.
+- `symphonia` for decoding direct streams.
 - `cpal` for cross-platform audio output.
 - `ringbuf` for the decoder-to-audio callback bridge.
 - `rubato` for resampling when streams are not 44.1 kHz.
 - `crossterm` for terminal controls.
 
-Do not add an `ffmpeg` dependency for v1.
+YouTube-backed live stations are resolved with yt-dlp and decoded with `ffmpeg` from `$PATH`. yt-dlp uses the existing auto-provisioning path shared with `lum yt`; ffmpeg is intentionally PATH-only for now and may be auto-provisioned later.
 
 ## Supported Streams
 
-Built-in stations must be direct audio streams that Symphonia can decode. The current implementation supports the existing ruv station set, including streams that require resampling and mono-to-stereo conversion.
+Built-in direct stations must be direct audio streams that Symphonia can decode. The existing ruv station set stays on this path, including streams that require resampling and mono-to-stereo conversion.
+
+YouTube live stations are supported as normal built-in stations when yt-dlp can resolve the page URL and ffmpeg can decode the resulting stream or HLS playlist.
 
 Out of scope unless a real station requires it:
 
-- playlists
-- HLS
-- HE-AAC
+- general playlist support outside the YouTube/ffmpeg path
+- HE-AAC on the pure Rust direct-stream path
 - user-configurable stations
 - station aliases
 
@@ -62,10 +63,11 @@ Run normal tests:
 cargo test --workspace
 ```
 
-Run the manual live-stream compatibility probe:
+Run the manual live-stream compatibility probes:
 
 ```sh
 cargo test built_in_stations_decode_initial_packets -- --ignored --nocapture
+cargo test youtube_station_decodes_initial_pcm_samples_via_ffmpeg -- --ignored --nocapture
 ```
 
-The ignored probe opens each built-in station URL and decodes initial packets with Symphonia. It does not require audio hardware.
+The built-in direct-stream probe opens each direct station URL and decodes initial packets with Symphonia. The YouTube probe requires yt-dlp and ffmpeg on `$PATH` and verifies that the YouTube station can produce PCM samples through ffmpeg. Neither probe requires audio hardware.

@@ -12,9 +12,12 @@ use anyhow::{Context, Result};
 use tokio::task::JoinHandle;
 
 use crate::cli::RadioArgs;
+use crate::ffmpeg;
+use crate::yt::resolve_yt_dlp;
 use audio::AudioPlayer;
 use controls::{ControlEvent, RawMode};
 use stations::Station;
+use std::path::PathBuf;
 
 pub async fn run(args: RadioArgs) -> Result<()> {
     match args.station {
@@ -46,12 +49,22 @@ async fn play(station: Station) -> Result<()> {
         .inspect_err(|error| tracing::warn!(error = %error, "keyboard unavailable"))?;
     let mut controls = controls::spawn_control_task();
 
+    let (yt_dlp, ffmpeg) = if station.kind == stations::StationKind::YouTube {
+        let yt_dlp = resolve_yt_dlp().await?;
+        let ffmpeg = ffmpeg::resolve().context("YouTube radio stations require ffmpeg")?;
+        (Some(yt_dlp), Some(ffmpeg))
+    } else {
+        (None, None)
+    };
+
     let mut paused = false;
     let mut stop = Arc::new(AtomicBool::new(false));
     let mut task = Some(start_decode_task(
         station,
         audio.writer(),
         Arc::clone(&stop),
+        yt_dlp.clone(),
+        ffmpeg.clone(),
     ));
 
     loop {
@@ -62,7 +75,13 @@ async fn play(station: Station) -> Result<()> {
                     Some(ControlEvent::TogglePause) => {
                         if paused {
                             stop = Arc::new(AtomicBool::new(false));
-                            task = Some(start_decode_task(station, audio.writer(), Arc::clone(&stop)));
+                            task = Some(start_decode_task(
+                                station,
+                                audio.writer(),
+                                Arc::clone(&stop),
+                                yt_dlp.clone(),
+                                ffmpeg.clone(),
+                            ));
                             paused = false;
                             print!("\rplaying · press space to pause       ");
                         } else {
@@ -108,6 +127,10 @@ fn start_decode_task(
     station: Station,
     writer: audio::AudioWriter,
     stop: Arc<AtomicBool>,
+    yt_dlp: Option<PathBuf>,
+    ffmpeg: Option<PathBuf>,
 ) -> JoinHandle<Result<()>> {
-    tokio::task::spawn_blocking(move || decode::stream_station(station, writer, stop))
+    tokio::task::spawn_blocking(move || {
+        decode::stream_station(station, writer, stop, yt_dlp.as_deref(), ffmpeg.as_deref())
+    })
 }

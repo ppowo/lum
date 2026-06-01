@@ -1,5 +1,7 @@
 use std::{
     io::{self, Read, Seek, SeekFrom},
+    path::Path,
+    process::Command,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -19,7 +21,11 @@ use symphonia::core::{
     meta::MetadataOptions,
 };
 
-use super::{audio::AudioWriter, stations::Station};
+use super::{
+    audio::AudioWriter,
+    stations::{Station, StationKind},
+};
+use crate::ffmpeg;
 
 struct HttpStream {
     inner: Mutex<reqwest::blocking::Response>,
@@ -55,17 +61,59 @@ impl MediaSource for HttpStream {
     }
 }
 
-pub fn stream_station(station: Station, writer: AudioWriter, stop: Arc<AtomicBool>) -> Result<()> {
+pub fn resolve_station_url(station: &Station, yt_dlp: Option<&Path>) -> Result<String> {
+    match station.kind {
+        StationKind::Direct => Ok(station.url.to_string()),
+        StationKind::YouTube => {
+            let yt_dlp = yt_dlp
+                .ok_or_else(|| anyhow::anyhow!("yt-dlp binary required for YouTube station"))?;
+            let output = Command::new(yt_dlp)
+                .args(["-g", "--no-playlist", station.url])
+                .output()
+                .context("failed to run yt-dlp")?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                bail!("yt-dlp failed: {stderr}");
+            }
+            let url = String::from_utf8(output.stdout)
+                .context("yt-dlp output is not valid UTF-8")?
+                .trim()
+                .to_string();
+            Ok(url)
+        }
+    }
+}
+
+pub fn stream_station(
+    station: Station,
+    writer: AudioWriter,
+    stop: Arc<AtomicBool>,
+    yt_dlp: Option<&Path>,
+    ffmpeg: Option<&Path>,
+) -> Result<()> {
     tracing::info!(
         station = station.code,
         url = station.url,
         "opening station stream"
     );
 
+    match station.kind {
+        StationKind::Direct => stream_direct_station(station, writer, stop),
+        StationKind::YouTube => {
+            stream_youtube_station_via_ffmpeg(station, writer, stop, yt_dlp, ffmpeg)
+        }
+    }
+}
+
+fn stream_direct_station(
+    station: Station,
+    writer: AudioWriter,
+    stop: Arc<AtomicBool>,
+) -> Result<()> {
     const MAX_RECONNECTS: u32 = 5;
 
     decode_with_retry(
-        &mut || try_decode_session(station, writer.clone(), &stop),
+        &mut || try_decode_session(station.url, station.code, writer.clone(), &stop),
         &mut || Ok(()),
         is_reconnectable_err,
         MAX_RECONNECTS,
@@ -73,8 +121,61 @@ pub fn stream_station(station: Station, writer: AudioWriter, stop: Arc<AtomicBoo
     )
 }
 
-fn try_decode_session(station: Station, writer: AudioWriter, stop: &AtomicBool) -> Result<()> {
-    let mut format = open_station_format(station)?;
+fn stream_youtube_station_via_ffmpeg(
+    station: Station,
+    writer: AudioWriter,
+    stop: Arc<AtomicBool>,
+    yt_dlp: Option<&Path>,
+    ffmpeg: Option<&Path>,
+) -> Result<()> {
+    let yt_dlp =
+        yt_dlp.ok_or_else(|| anyhow::anyhow!("yt-dlp binary required for YouTube station"))?;
+    let ffmpeg =
+        ffmpeg.ok_or_else(|| anyhow::anyhow!("ffmpeg binary required for YouTube station"))?;
+    let url = resolve_station_url(&station, Some(yt_dlp))?;
+    stream_ffmpeg_pcm(ffmpeg, &url, writer, &stop)
+}
+
+fn stream_ffmpeg_pcm(
+    ffmpeg: &Path,
+    url: &str,
+    writer: AudioWriter,
+    stop: &AtomicBool,
+) -> Result<()> {
+    let mut pcm = ffmpeg::PcmStdout::spawn(ffmpeg, url, writer.sample_rate())?;
+    let mut bytes = [0_u8; 16 * 1024];
+    let mut carry = Vec::<u8>::new();
+
+    while !stop.load(Ordering::Relaxed) {
+        let read = pcm
+            .read(&mut bytes)
+            .context("failed to read ffmpeg PCM output")?;
+        if read == 0 {
+            break;
+        }
+        carry.extend_from_slice(&bytes[..read]);
+        let sample_bytes = carry.len() / 4 * 4;
+        if sample_bytes == 0 {
+            continue;
+        }
+        let samples: Vec<f32> = carry[..sample_bytes]
+            .chunks_exact(4)
+            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+            .collect();
+        carry.drain(..sample_bytes);
+        writer.push_samples(&samples, stop);
+    }
+
+    if stop.load(Ordering::Relaxed) {
+        pcm.kill();
+        return Ok(());
+    }
+
+    pcm.finish()
+}
+
+fn try_decode_session(url: &str, code: &str, writer: AudioWriter, stop: &AtomicBool) -> Result<()> {
+    let mut format = open_station_format(url, code)?;
     let track = format
         .default_track(TrackType::Audio)
         .context("stream has no audio track")?;
@@ -119,13 +220,13 @@ fn try_decode_session(station: Station, writer: AudioWriter, stop: &AtomicBool) 
         }
     }
 
-    tracing::info!(station = station.code, "station stream stopped");
+    tracing::info!(station = code, "station stream stopped");
     Ok(())
 }
 
 #[cfg(test)]
 pub(crate) fn probe_station_decode(station: Station, packets_to_decode: usize) -> Result<usize> {
-    let mut format = open_station_format(station)?;
+    let mut format = open_station_format(station.url, station.code)?;
     let track = format
         .default_track(TrackType::Audio)
         .context("stream has no audio track")?;
@@ -177,18 +278,47 @@ pub(crate) fn probe_station_decode(station: Station, packets_to_decode: usize) -
     Ok(decoded)
 }
 
-fn open_station_format(station: Station) -> Result<Box<dyn FormatReader>> {
+#[cfg(test)]
+pub(crate) fn probe_youtube_station_via_ffmpeg(
+    station: &Station,
+    yt_dlp: &Path,
+    ffmpeg: &Path,
+    min_samples: usize,
+) -> Result<usize> {
+    let url = resolve_station_url(station, Some(yt_dlp))?;
+    let mut pcm = ffmpeg::PcmStdout::spawn(ffmpeg, &url, super::audio::DEFAULT_SAMPLE_RATE)?;
+    let mut bytes = vec![0; min_samples * std::mem::size_of::<f32>()];
+    let mut read = 0;
+    while read < bytes.len() {
+        let n = pcm
+            .read(&mut bytes[read..])
+            .context("failed to read ffmpeg PCM output")?;
+        if n == 0 {
+            break;
+        }
+        read += n;
+    }
+    pcm.kill();
+
+    let samples = read / std::mem::size_of::<f32>();
+    if samples == 0 {
+        bail!("ffmpeg did not produce PCM samples");
+    }
+    Ok(samples)
+}
+
+fn open_station_format(url: &str, code: &str) -> Result<Box<dyn FormatReader>> {
     let client = reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(15))
         .build()
         .context("failed to build HTTP client")?;
     let response = client
-        .get(station.url)
+        .get(url)
         .header(reqwest::header::USER_AGENT, "lum/0.1")
         .send()
-        .with_context(|| format!("failed to open stream for {}", station.code))?
+        .with_context(|| format!("failed to open stream for {code}"))?
         .error_for_status()
-        .with_context(|| format!("stream returned error status for {}", station.code))?;
+        .with_context(|| format!("stream returned error status for {code}"))?;
 
     let mss = MediaSourceStream::new(
         Box::new(HttpStream::new(response)),
@@ -556,5 +686,38 @@ mod tests {
             std::io::Error::new(std::io::ErrorKind::Interrupted, "interrupted")
         ))));
         assert!(!super::is_reconnectable_err(&anyhow!("some random error")));
+    }
+
+    #[test]
+    fn resolve_direct_station_url_returns_station_url() {
+        let station = stations::find("atma").unwrap();
+        let url = super::resolve_station_url(station, None).unwrap();
+        assert_eq!(url, station.url);
+    }
+
+    #[test]
+    #[ignore = "requires yt-dlp on $PATH"]
+    fn resolve_youtube_url_via_yt_dlp() {
+        let yt_dlp = which::which("yt-dlp").expect("yt-dlp must be on $PATH");
+        let station = stations::find("ytlf").unwrap();
+        let url = super::resolve_station_url(station, Some(&yt_dlp)).unwrap();
+        assert!(
+            url.starts_with("http"),
+            "resolved YouTube URL should start with http, got: {url}"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires yt-dlp and ffmpeg on $PATH"]
+    fn youtube_station_decodes_initial_pcm_samples_via_ffmpeg() {
+        let yt_dlp = which::which("yt-dlp").expect("yt-dlp must be on $PATH");
+        let ffmpeg = which::which("ffmpeg").expect("ffmpeg must be on $PATH");
+        let station = stations::find("ytlf").unwrap();
+        let decoded =
+            super::probe_youtube_station_via_ffmpeg(station, &yt_dlp, &ffmpeg, 1_024).unwrap();
+        assert!(
+            decoded >= 1_024,
+            "expected at least 1024 samples, got {decoded}"
+        );
     }
 }

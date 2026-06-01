@@ -26,7 +26,7 @@ pub(crate) async fn resolve() -> Result<PathBuf> {
         return Ok(path);
     }
 
-    if auto_provision_disabled() || cfg!(target_os = "macos") {
+    if auto_provision_disabled() {
         return Err(not_installed_error());
     }
 
@@ -96,18 +96,26 @@ async fn install_ffmpeg(local: &Path, state_path: &Path) -> Result<()> {
 }
 
 async fn download_ffmpeg(local: &Path, state_path: &Path) -> Result<()> {
-    let asset = target_asset()?;
-    let info = fetch_latest_release_info(asset.name).await?;
-    tracing::info!("downloading ffmpeg from {}", info.download_url);
+    let dl = resolve_download(std::env::consts::OS, std::env::consts::ARCH)?;
 
-    let archive_data = reqwest::get(&info.download_url)
+    let (download_url, kind) = match &dl {
+        FfmpegDownload::Direct { url, kind } => (url.to_string(), *kind),
+        FfmpegDownload::BtbN { asset_name, kind } => {
+            let info = fetch_latest_release_info(asset_name).await?;
+            (info.download_url, *kind)
+        }
+    };
+
+    tracing::info!("downloading ffmpeg from {download_url}");
+
+    let archive_data = reqwest::get(&download_url)
         .await
-        .with_context(|| format!("failed to download ffmpeg from {}", info.download_url))?
+        .with_context(|| format!("failed to download ffmpeg from {download_url}"))?
         .error_for_status()?
         .bytes()
         .await?;
 
-    extract_and_install(asset.kind, &archive_data, local)?;
+    extract_and_install(kind, &archive_data, local)?;
     write_state(state_path)
 }
 
@@ -142,42 +150,51 @@ async fn fetch_latest_release_info(asset_name: &str) -> Result<ReleaseInfo> {
     Ok(ReleaseInfo { download_url })
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum ArchiveKind {
     TarXz,
     Zip,
 }
 
-struct TargetAsset {
-    name: &'static str,
-    kind: ArchiveKind,
+#[derive(Debug, Clone)]
+enum FfmpegDownload {
+    BtbN {
+        asset_name: &'static str,
+        kind: ArchiveKind,
+    },
+    Direct {
+        url: &'static str,
+        kind: ArchiveKind,
+    },
 }
 
-fn target_asset() -> Result<TargetAsset> {
-    match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("linux", "x86_64") => Ok(TargetAsset {
-            name: "ffmpeg-master-latest-linux64-gpl.tar.xz",
+fn resolve_download(os: &str, arch: &str) -> Result<FfmpegDownload> {
+    match (os, arch) {
+        ("linux", "x86_64") => Ok(FfmpegDownload::BtbN {
+            asset_name: "ffmpeg-master-latest-linux64-gpl.tar.xz",
             kind: ArchiveKind::TarXz,
         }),
-        ("linux", "aarch64") => Ok(TargetAsset {
-            name: "ffmpeg-master-latest-linuxarm64-gpl.tar.xz",
+        ("linux", "aarch64") => Ok(FfmpegDownload::BtbN {
+            asset_name: "ffmpeg-master-latest-linuxarm64-gpl.tar.xz",
             kind: ArchiveKind::TarXz,
         }),
-        ("windows", "x86_64") => Ok(TargetAsset {
-            name: "ffmpeg-master-latest-win64-gpl.zip",
+        ("windows", "x86_64") => Ok(FfmpegDownload::BtbN {
+            asset_name: "ffmpeg-master-latest-win64-gpl.zip",
             kind: ArchiveKind::Zip,
         }),
-        ("windows", "aarch64") => Ok(TargetAsset {
-            name: "ffmpeg-master-latest-winarm64-gpl.zip",
+        ("windows", "aarch64") => Ok(FfmpegDownload::BtbN {
+            asset_name: "ffmpeg-master-latest-winarm64-gpl.zip",
             kind: ArchiveKind::Zip,
         }),
-        _ => Err(not_installed_error()).with_context(|| {
-            format!(
-                "ffmpeg auto-provisioning is not supported on {} {}",
-                std::env::consts::OS,
-                std::env::consts::ARCH
-            )
+        ("macos", "aarch64") => Ok(FfmpegDownload::Direct {
+            url: "https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/snapshot/ffmpeg.zip",
+            kind: ArchiveKind::Zip,
         }),
+        ("macos", "x86_64") => Ok(FfmpegDownload::Direct {
+            url: "https://ffmpeg.martin-riedl.de/redirect/latest/macos/amd64/snapshot/ffmpeg.zip",
+            kind: ArchiveKind::Zip,
+        }),
+        _ => anyhow::bail!("ffmpeg auto-provisioning is not supported on {os} {arch}"),
     }
 }
 
@@ -216,7 +233,8 @@ fn extract_zip_ffmpeg(archive_data: &[u8], local: &Path) -> Result<()> {
     for index in 0..archive.len() {
         let mut file = archive.by_index(index)?;
         let path = Path::new(file.name());
-        if path.ends_with(Path::new("bin").join("ffmpeg.exe")) {
+        let filename = path.file_name().and_then(|n| n.to_str());
+        if matches!(filename, Some("ffmpeg") | Some("ffmpeg.exe")) {
             let temp = tempfile::NamedTempFile::new()?;
             let mut out = std::fs::File::create(temp.path())?;
             io::copy(&mut file, &mut out)?;
@@ -225,7 +243,7 @@ fn extract_zip_ffmpeg(archive_data: &[u8], local: &Path) -> Result<()> {
         }
     }
 
-    anyhow::bail!("ffmpeg.exe binary not found in downloaded archive")
+    anyhow::bail!("ffmpeg binary not found in downloaded archive")
 }
 
 fn install_from_local_artifact(source: &Path, local: &Path, state_path: &Path) -> Result<()> {
@@ -324,5 +342,75 @@ impl PcmStdout {
 impl Read for PcmStdout {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.stdout.read(buf)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn extract_zip_with_root_level_ffmpeg() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let local = dir.path().join("ffmpeg");
+
+        // Build a zip containing just "ffmpeg" at root (Martin-Riedl layout)
+        let mut zip_data = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(Cursor::new(&mut zip_data));
+            let options = zip::write::FileOptions::<'_, ()>::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            zip.start_file("ffmpeg", options).unwrap();
+            zip.write_all(b"fake ffmpeg binary content").unwrap();
+            zip.finish().unwrap();
+        }
+
+        extract_zip_ffmpeg(&zip_data, &local).unwrap();
+
+        assert!(local.exists());
+        let contents = std::fs::read(&local).unwrap();
+        assert_eq!(contents, b"fake ffmpeg binary content");
+    }
+
+    #[test]
+    fn resolve_download_maps_macos_arm64_to_martin_riedl() {
+        let dl = resolve_download("macos", "aarch64").unwrap();
+        match dl {
+            FfmpegDownload::Direct { url, kind } => {
+                assert!(url.contains("macos/arm64/"), "url: {url}");
+                assert!(matches!(kind, ArchiveKind::Zip));
+            }
+            other => panic!("expected Direct, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_download_maps_macos_x86_64_to_martin_riedl() {
+        let dl = resolve_download("macos", "x86_64").unwrap();
+        match dl {
+            FfmpegDownload::Direct { url, kind } => {
+                assert!(url.contains("macos/amd64/"), "url: {url}");
+                assert!(matches!(kind, ArchiveKind::Zip));
+            }
+            other => panic!("expected Direct, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_download_maps_linux_x86_64_to_btbn() {
+        let dl = resolve_download("linux", "x86_64").unwrap();
+        match dl {
+            FfmpegDownload::BtbN { asset_name, kind } => {
+                assert!(asset_name.contains("linux64"));
+                assert!(matches!(kind, ArchiveKind::TarXz));
+            }
+            other => panic!("expected BtbN, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_download_errors_on_unsupported() {
+        assert!(resolve_download("freebsd", "x86_64").is_err());
     }
 }

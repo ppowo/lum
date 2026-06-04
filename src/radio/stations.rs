@@ -70,7 +70,7 @@ const STATIONS: &[Station] = &[
     Station {
         code: "ytlf",
         description: "Lofi Girl - lofi hip hop radio - beats to relax/study to",
-        url: "https://www.youtube.com/watch?v=EWrX250Zhko",
+        url: "https://www.youtube.com/watch?v=X4VbdwhkE10",
         kind: StationKind::YouTube,
     },
 ];

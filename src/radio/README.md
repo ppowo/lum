@@ -1,59 +1,56 @@
 # Radio Subcommand
 
-`lum radio` reimplements `ruv` as a Rust subcommand.
+`lum radio` reimplements `ruv` as a Rust subcommand while delegating playback to `ffplay`.
 
 ## CLI Shape
 
 - `lum radio` lists built-in stations.
-- `lum radio <code>` plays a station.
+- `lum radio list` explicitly lists built-in stations.
+- `lum radio <code>` starts a station in the background, replacing any current station.
+- `lum radio status` prints the remembered playback state.
+- `lum radio stop` stops playback.
+- `lum radio pause` stops the live stream and remembers the station as paused.
+- `lum radio resume` reconnects to the paused station.
 - Preserve existing `ruv` station codes and the plain output style.
 
 ## Playback Stack
 
-Direct audio stations use the pure Rust stack recorded in ADR 0002:
+Radio playback uses the existing ffmpeg dependency path:
 
-- `reqwest` with `rustls` for direct HTTPS audio streams.
-- `symphonia` for decoding direct streams.
-- `cpal` for cross-platform audio output.
-- `ringbuf` for the decoder-to-audio callback bridge.
-- `rubato` for resampling when streams are not 44.1 kHz.
-- `crossterm` for terminal controls.
+- `ffplay` does audio playback for direct streams.
+- `yt-dlp` resolves YouTube live station pages to stream URLs.
+- `ffplay` then plays the resolved YouTube stream URL.
 
-YouTube-backed live stations are resolved with yt-dlp and decoded with `ffmpeg`. Both tools prefer `$PATH`; yt-dlp auto-provisions when missing, and ffmpeg auto-provisions on Linux/Windows when missing while macOS remains PATH-only.
+`ffplay` is preferred from `$PATH`. If it is not on `$PATH`, lum looks for a provisioned `ffplay` next to its managed ffmpeg binary.
+
+The old pure-Rust foreground audio path is no longer the product direction for `lum radio`. Do not reintroduce CPAL/Symphonia/ring-buffer terminal playback unless an ADR reverses this decision.
 
 ## Supported Streams
 
-Built-in direct stations must be direct audio streams that Symphonia can decode. The existing ruv station set stays on this path, including streams that require resampling and mono-to-stereo conversion.
-
-YouTube live stations are supported as normal built-in stations when yt-dlp can resolve the page URL and ffmpeg can decode the resulting stream or HLS playlist.
+Built-in direct stations are passed to `ffplay` as URLs. YouTube live stations are supported when yt-dlp can resolve the page URL and ffplay can play the resulting stream or HLS playlist.
 
 Out of scope unless a real station requires it:
 
-- general playlist support outside the YouTube/ffmpeg path
-- HE-AAC on the pure Rust direct-stream path
 - user-configurable stations
 - station aliases
-
-## Blocking Decoder Adapter
-
-`lum radio` runs inside the Tokio runtime for terminal control orchestration, but the stream decoder is intentionally blocking. Symphonia consumes `Read`/`Seek` media sources and CPAL invokes a real-time audio callback, so the current seam is:
-
-- async command/control loop in `radio::mod`
-- `tokio::task::spawn_blocking` for the Symphonia/HTTP decode loop
-- a ring buffer between the blocking decoder and CPAL output callback
-
-Do not move the decoder onto a normal Tokio task. If this area changes, preserve the explicit blocking adapter and focus on cancellation/backpressure behavior rather than making the entire audio path async.
+- custom audio decoding inside lum
 
 ## Runtime Semantics
 
-Controls:
+Controls are process-backed, not terminal-key backed:
 
-- `space` / `p`: pause or resume
-- `q` / `ctrl+c`: stop
+- `pause` is a live pause: stop `ffplay` and keep station state as paused. No audio is buffered.
+- `resume` starts a new `ffplay` process for the remembered station.
+- `stop` kills the remembered `ffplay` process and clears state.
+- Starting a new station stops the remembered process and starts the new station.
 
-Pause is a live pause: disconnect/stop decoding while paused and reconnect to the live stream on resume. Do not buffer paused audio.
+State is stored in lum's platform-native state directory as `radio-player.json`.
 
-Keep terminal raw mode scoped carefully. Print normal multiline output before entering raw mode, and restore cooked mode before printing shutdown text.
+User-facing output remains plain/script-friendly:
+
+- `playing <code> <description>`
+- `paused <code> <description>`
+- `stopped`
 
 ## Tests
 
@@ -63,11 +60,10 @@ Run normal tests:
 cargo test --workspace
 ```
 
-Run the manual live-stream compatibility probes:
+Manual live-stream testing requires `ffplay` and, for YouTube stations, `yt-dlp`:
 
 ```sh
-cargo test built_in_stations_decode_initial_packets -- --ignored --nocapture
-cargo test youtube_station_decodes_initial_pcm_samples_via_ffmpeg -- --ignored --nocapture
+cargo run -- radio atma
+cargo run -- radio status
+cargo run -- radio stop
 ```
-
-The built-in direct-stream probe opens each direct station URL and decodes initial packets with Symphonia. The YouTube probe requires yt-dlp and ffmpeg to be resolvable (from `$PATH` or supported auto-provisioning) and verifies that the YouTube station can produce PCM samples through ffmpeg. Neither probe requires audio hardware.

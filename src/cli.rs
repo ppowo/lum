@@ -86,9 +86,14 @@ pub enum Commands {
 }
 
 #[derive(Debug, Args, Clone)]
+#[command(
+    after_help = "Commands:\n  lum radio                 List stations\n  lum radio <code>          Play a station (example: lum radio atma)\n  lum radio status          Show current playback state\n  lum radio pause           Stop the live stream and remember it as paused\n  lum radio resume          Reconnect to the paused station\n  lum radio stop            Stop playback and clear state"
+)]
 pub struct RadioArgs {
-    /// Station code to play. Omit to list stations.
-    pub station: Option<String>,
+    /// Command (status|pause|resume|stop|list) or station code.
+    ///
+    /// Omit to list stations and common playback commands.
+    pub arg: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -276,7 +281,7 @@ mod tests {
     fn parses_radio_without_station() {
         let cli = Cli::parse_from(["lum", "radio"]);
         match cli.command {
-            Commands::Radio(args) => assert_eq!(args.station, None),
+            Commands::Radio(args) => assert_eq!(args.arg, None),
             Commands::Backup { .. }
             | Commands::Env { .. }
             | Commands::Completions { .. }
@@ -295,7 +300,7 @@ mod tests {
     fn parses_radio_with_station() {
         let cli = Cli::parse_from(["lum", "radio", "atma"]);
         match cli.command {
-            Commands::Radio(args) => assert_eq!(args.station.as_deref(), Some("atma")),
+            Commands::Radio(args) => assert_eq!(args.arg.as_deref(), Some("atma")),
             Commands::Backup { .. }
             | Commands::Env { .. }
             | Commands::Completions { .. }

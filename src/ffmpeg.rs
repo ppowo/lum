@@ -1,7 +1,6 @@
 use std::{
-    io::{self, Cursor, Read},
+    io::{self, Cursor},
     path::{Path, PathBuf},
-    process::{Child, ChildStdout, Command, Stdio},
     time::{Duration, SystemTime},
 };
 
@@ -48,6 +47,30 @@ pub(crate) async fn resolve() -> Result<PathBuf> {
         .with_context(|| format!("failed to create deps dir {}", dir.display()))?;
     install_ffmpeg(&local, &state_path).await?;
     Ok(local)
+}
+
+/// Resolve the ffplay binary to use for radio playback.
+pub(crate) async fn resolve_ffplay() -> Result<PathBuf> {
+    if let Ok(path) = which::which("ffplay") {
+        tracing::debug!("using ffplay from PATH: {}", path.display());
+        return Ok(path);
+    }
+
+    let dir = deps_dir()?;
+    let local = dir.join(ffplay_binary_name());
+    if local.exists() {
+        return Ok(local);
+    }
+
+    // Refresh the managed ffmpeg bundle; supported archives usually include ffplay too.
+    let _ = resolve().await;
+    if local.exists() {
+        return Ok(local);
+    }
+
+    Err(anyhow::anyhow!(
+        "ffplay is not installed. Install ffmpeg with ffplay, or refresh lum's ffmpeg dependency cache"
+    ))
 }
 
 fn auto_provision_disabled() -> bool {
@@ -208,6 +231,11 @@ fn extract_and_install(kind: ArchiveKind, archive_data: &[u8], local: &Path) -> 
 fn extract_tar_xz_ffmpeg(archive_data: &[u8], local: &Path) -> Result<()> {
     let decoder = xz2::read::XzDecoder::new(Cursor::new(archive_data));
     let mut archive = tar::Archive::new(decoder);
+    let dir = local
+        .parent()
+        .context("ffmpeg install path has no parent")?;
+    let ffplay = dir.join(ffplay_binary_name());
+    let mut found_ffmpeg = false;
 
     for entry in archive
         .entries()
@@ -215,35 +243,64 @@ fn extract_tar_xz_ffmpeg(archive_data: &[u8], local: &Path) -> Result<()> {
     {
         let mut entry = entry?;
         let path = entry.path()?;
-        if path.ends_with(Path::new("bin").join("ffmpeg")) {
+        let destination = if path.ends_with(Path::new("bin").join("ffmpeg")) {
+            found_ffmpeg = true;
+            Some(local)
+        } else if path.ends_with(Path::new("bin").join("ffplay")) {
+            Some(ffplay.as_path())
+        } else {
+            None
+        };
+
+        if let Some(destination) = destination {
             let temp = tempfile::NamedTempFile::new()?;
             entry.unpack(temp.path())?;
-            artifact::install_executable(temp.path(), local)?;
-            return Ok(());
+            artifact::install_executable(temp.path(), destination)?;
         }
     }
 
-    anyhow::bail!("ffmpeg binary not found in downloaded archive")
+    if found_ffmpeg {
+        Ok(())
+    } else {
+        anyhow::bail!("ffmpeg binary not found in downloaded archive")
+    }
 }
 
 fn extract_zip_ffmpeg(archive_data: &[u8], local: &Path) -> Result<()> {
     let reader = Cursor::new(archive_data);
     let mut archive = zip::ZipArchive::new(reader).context("failed to read ffmpeg zip archive")?;
+    let dir = local
+        .parent()
+        .context("ffmpeg install path has no parent")?;
+    let ffplay = dir.join(ffplay_binary_name());
+    let mut found_ffmpeg = false;
 
     for index in 0..archive.len() {
         let mut file = archive.by_index(index)?;
         let path = Path::new(file.name());
         let filename = path.file_name().and_then(|n| n.to_str());
-        if matches!(filename, Some("ffmpeg") | Some("ffmpeg.exe")) {
+        let destination = match filename {
+            Some("ffmpeg") | Some("ffmpeg.exe") => {
+                found_ffmpeg = true;
+                Some(local)
+            }
+            Some("ffplay") | Some("ffplay.exe") => Some(ffplay.as_path()),
+            _ => None,
+        };
+
+        if let Some(destination) = destination {
             let temp = tempfile::NamedTempFile::new()?;
             let mut out = std::fs::File::create(temp.path())?;
             io::copy(&mut file, &mut out)?;
-            artifact::install_executable(temp.path(), local)?;
-            return Ok(());
+            artifact::install_executable(temp.path(), destination)?;
         }
     }
 
-    anyhow::bail!("ffmpeg binary not found in downloaded archive")
+    if found_ffmpeg {
+        Ok(())
+    } else {
+        anyhow::bail!("ffmpeg binary not found in downloaded archive")
+    }
 }
 
 fn install_from_local_artifact(source: &Path, local: &Path, state_path: &Path) -> Result<()> {
@@ -277,6 +334,14 @@ fn ffmpeg_binary_name() -> &'static str {
     }
 }
 
+fn ffplay_binary_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "ffplay.exe"
+    } else {
+        "ffplay"
+    }
+}
+
 fn now_epoch_secs() -> u64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -287,62 +352,6 @@ fn now_epoch_secs() -> u64 {
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct FfmpegState {
     last_downloaded: Option<u64>,
-}
-
-pub(crate) struct PcmStdout {
-    child: Child,
-    stdout: ChildStdout,
-}
-
-impl PcmStdout {
-    pub(crate) fn spawn(ffmpeg: &Path, url: &str, sample_rate: u32) -> Result<Self> {
-        let sample_rate = sample_rate.to_string();
-        let mut child = Command::new(ffmpeg)
-            .args([
-                "-nostdin",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-i",
-                url,
-                "-vn",
-                "-f",
-                "f32le",
-                "-acodec",
-                "pcm_f32le",
-                "-ac",
-                "2",
-                "-ar",
-                &sample_rate,
-                "pipe:1",
-            ])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .context("failed to run ffmpeg")?;
-
-        let stdout = child.stdout.take().context("ffmpeg stdout was not piped")?;
-        Ok(Self { child, stdout })
-    }
-
-    pub(crate) fn finish(mut self) -> Result<()> {
-        let status = self.child.wait().context("failed to wait for ffmpeg")?;
-        if !status.success() {
-            anyhow::bail!("ffmpeg exited with status {status}");
-        }
-        Ok(())
-    }
-
-    pub(crate) fn kill(mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
-impl Read for PcmStdout {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.stdout.read(buf)
-    }
 }
 
 #[cfg(test)]

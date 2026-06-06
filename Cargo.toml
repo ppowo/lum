@@ -12,19 +12,13 @@ resolver = "3"
 
 [dependencies]
 anyhow = "1.0.102"
-audioadapter-buffers = "3.0.0"
 clap = { version = "4.6.1", features = ["derive"] }
 clap_complete = "4.6.5"
-cpal = "0.17.3"
-crossterm = "0.29.0"
 directories = "6.0.0"
 reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "json", "multipart", "rustls"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 sha2 = "0.11.0"
-ringbuf = "0.5.0"
-rubato = "3.0.0"
-symphonia = { version = "0.6.0", features = ["mp3", "aac", "isomp4"] }
 tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "fs", "sync"] }
 flate2 = "1.1.5"
 tar = "0.4.44"

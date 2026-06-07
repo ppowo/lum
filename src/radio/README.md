@@ -41,10 +41,10 @@ Controls are process-backed, not terminal-key backed:
 
 - `pause` is a live pause: stop `ffplay` and keep station state as paused. No audio is buffered.
 - `resume` starts a new `ffplay` process for the remembered station.
-- `stop` kills the remembered `ffplay` process and clears state.
+- `stop` kills the remembered `ffplay` process only if the current process still matches ffplay identity/start-time state, then clears state.
 - Starting a new station stops the remembered process and starts the new station.
 
-State is stored in lum's platform-native state directory as `radio-player.json`.
+State is stored in lum's platform-native state directory as `radio-player.json`, including the remembered ffplay PID and process start time when available.
 
 User-facing output remains plain/script-friendly:
 

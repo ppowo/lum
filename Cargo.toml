@@ -34,6 +34,7 @@ ignore = "0.4.25"
 chrono = { version = "0.4.44", features = ["clock", "std"] }
 globset = "0.4.18"
 notify-rust = "4"
+sysinfo = "0.39.3"
 
 [dev-dependencies]
 assert_cmd = "2.0.17"

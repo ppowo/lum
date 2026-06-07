@@ -1,26 +1,40 @@
-use std::process::{Command, Stdio};
+use std::{
+    ffi::OsStr,
+    process::{Command, Stdio},
+};
 
 use anyhow::{Context, Result};
+use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
 
 use crate::ffmpeg;
 
 pub(super) struct ExternalPlayer;
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct PlayerProcess {
+    pub(super) pid: u32,
+    pub(super) start_time: Option<u64>,
+}
+
 impl ExternalPlayer {
-    pub(super) async fn start(url: &str) -> Result<u32> {
+    pub(super) async fn start(url: &str) -> Result<PlayerProcess> {
         let ffplay = ffmpeg::resolve_ffplay().await?;
         let child = ffplay_command(ffplay, url)
             .spawn()
             .context("failed to start ffplay")?;
-        Ok(child.id())
+        let pid = child.id();
+        Ok(PlayerProcess {
+            pid,
+            start_time: process_start_time(pid),
+        })
     }
 
-    pub(super) fn is_alive(pid: u32) -> bool {
-        process_alive(pid)
+    pub(super) fn is_alive(pid: u32, start_time: Option<u64>) -> bool {
+        process_alive(pid, start_time)
     }
 
-    pub(super) fn stop(pid: u32) {
-        kill_pid(pid);
+    pub(super) fn stop(pid: u32, start_time: Option<u64>) {
+        kill_pid(pid, start_time);
     }
 }
 
@@ -34,47 +48,57 @@ fn ffplay_command(ffplay: impl AsRef<std::ffi::OsStr>, url: &str) -> Command {
     command
 }
 
-#[cfg(unix)]
-fn process_alive(pid: u32) -> bool {
-    Command::new("kill")
-        .args(["-0", &pid.to_string()])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
+fn process_alive(pid: u32, start_time: Option<u64>) -> bool {
+    with_ffplay_process(pid, start_time, |_| ()).is_some()
 }
 
-#[cfg(windows)]
-fn process_alive(pid: u32) -> bool {
-    Command::new("tasklist")
-        .args(["/FI", &format!("PID eq {pid}")])
-        .stdin(Stdio::null())
-        .output()
-        .is_ok_and(|output| {
-            output.status.success()
-                && String::from_utf8_lossy(&output.stdout).contains(&pid.to_string())
-        })
+fn kill_pid(pid: u32, start_time: Option<u64>) {
+    let _ = with_ffplay_process(pid, start_time, |process| {
+        match process.kill_with(Signal::Term) {
+            Some(true) => true,
+            _ => process.kill(),
+        }
+    });
 }
 
-#[cfg(unix)]
-fn kill_pid(pid: u32) {
-    let _ = Command::new("kill")
-        .arg(pid.to_string())
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
+fn process_start_time(pid: u32) -> Option<u64> {
+    with_process(pid, |process| process.start_time())
 }
 
-#[cfg(windows)]
-fn kill_pid(pid: u32) {
-    let _ = Command::new("taskkill")
-        .args(["/PID", &pid.to_string(), "/T", "/F"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
+fn with_ffplay_process<R>(
+    pid: u32,
+    start_time: Option<u64>,
+    f: impl FnOnce(&sysinfo::Process) -> R,
+) -> Option<R> {
+    with_process(pid, |process| {
+        (is_ffplay_process(process) && process_start_time_matches(process.start_time(), start_time))
+            .then(|| f(process))
+    })
+    .flatten()
+}
+
+fn with_process<R>(pid: u32, f: impl FnOnce(&sysinfo::Process) -> R) -> Option<R> {
+    let pid = Pid::from_u32(pid);
+    let mut system = System::new();
+    system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+    system.process(pid).map(f)
+}
+
+fn is_ffplay_process(process: &sysinfo::Process) -> bool {
+    process
+        .exe()
+        .and_then(|path| path.file_name())
+        .is_some_and(is_ffplay_name)
+        || is_ffplay_name(process.name())
+}
+
+fn is_ffplay_name(name: &OsStr) -> bool {
+    let name = name.to_string_lossy();
+    name.eq_ignore_ascii_case("ffplay") || name.eq_ignore_ascii_case("ffplay.exe")
+}
+
+fn process_start_time_matches(actual: u64, expected: Option<u64>) -> bool {
+    expected.is_none_or(|expected| actual == expected)
 }
 
 #[cfg(test)]
@@ -99,5 +123,17 @@ mod tests {
                 "https://example.test/stream"
             ]
         );
+    }
+
+    #[test]
+    fn non_ffplay_pid_is_not_considered_alive() {
+        assert!(!ExternalPlayer::is_alive(std::process::id(), None));
+    }
+
+    #[test]
+    fn expected_process_start_time_must_match_when_known() {
+        assert!(process_start_time_matches(42, None));
+        assert!(process_start_time_matches(42, Some(42)));
+        assert!(!process_start_time_matches(42, Some(7)));
     }
 }

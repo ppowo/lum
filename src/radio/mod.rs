@@ -41,6 +41,7 @@ pub fn parse_command(args: &RadioArgs) -> RadioCommand {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RadioState {
     pid: u32,
+    start_time: Option<u64>,
     code: String,
     description: String,
     paused: bool,
@@ -75,9 +76,10 @@ pub async fn run(args: RadioArgs) -> Result<()> {
 async fn play(station: Station) -> Result<()> {
     let _ = stop_existing();
     let url = playable_url(station).await?;
-    let pid = ExternalPlayer::start(&url).await?;
+    let player = ExternalPlayer::start(&url).await?;
     write_state(&RadioState {
-        pid,
+        pid: player.pid,
+        start_time: player.start_time,
         code: station.code.to_string(),
         description: station.description.to_string(),
         paused: false,
@@ -93,7 +95,7 @@ fn pause() -> Result<()> {
     };
 
     if !state.paused {
-        ExternalPlayer::stop(state.pid);
+        ExternalPlayer::stop(state.pid, state.start_time);
         state.paused = true;
         write_state(&state)?;
     }
@@ -108,11 +110,13 @@ async fn resume() -> Result<()> {
         bail!("no radio player is running");
     };
 
-    if state.paused || !ExternalPlayer::is_alive(state.pid) {
+    if state.paused || !ExternalPlayer::is_alive(state.pid, state.start_time) {
         let station = stations::find(&state.code)
             .with_context(|| format!("station no longer exists: {}", state.code))?;
         let url = playable_url(*station).await?;
-        state.pid = ExternalPlayer::start(&url).await?;
+        let player = ExternalPlayer::start(&url).await?;
+        state.pid = player.pid;
+        state.start_time = player.start_time;
         state.paused = false;
         write_state(&state)?;
     }
@@ -135,7 +139,7 @@ fn print_status() -> Result<()> {
 
     if state.paused {
         println!("paused {} {}", state.code, state.description);
-    } else if ExternalPlayer::is_alive(state.pid) {
+    } else if ExternalPlayer::is_alive(state.pid, state.start_time) {
         println!("playing {} {}", state.code, state.description);
     } else {
         let _ = remove_state();
@@ -169,7 +173,7 @@ fn stop_existing() -> Result<bool> {
     let Some(state) = read_state()? else {
         return Ok(false);
     };
-    ExternalPlayer::stop(state.pid);
+    ExternalPlayer::stop(state.pid, state.start_time);
     remove_state()?;
     Ok(true)
 }

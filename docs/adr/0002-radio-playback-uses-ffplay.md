@@ -43,7 +43,7 @@ Lum does not own:
 
 This greatly reduces implementation surface area and dependency surface for radio playback. The pure Rust playback stack dependencies should stay removed unless a future ADR reverses this decision.
 
-`lum radio <code>` starts `ffplay` detached and records `radio-player.json` state containing the process id, station code, station description, and paused flag.
+`lum radio <code>` starts `ffplay` detached and records `radio-player.json` state containing the process id, process start time when available, station code, station description, and paused flag.
 
 `pause` is a live pause: lum stops `ffplay` and remembers the station. No audio is buffered.
 
@@ -51,7 +51,7 @@ This greatly reduces implementation surface area and dependency surface for radi
 
 `stop` kills the remembered `ffplay` process and clears state.
 
-`status` is based on lum's remembered state plus a process-aliveness check. It is intentionally simpler than a full playback telemetry channel.
+`status` is based on lum's remembered state plus a process identity/aliveness check. Lum verifies the remembered PID still looks like ffplay and, when start time is known, that it is the same process instance. It is intentionally simpler than a full playback telemetry channel.
 
 If a platform's managed ffmpeg archive does not include `ffplay`, radio playback requires a user-installed ffplay. Do not fall back to a custom Rust audio stack just to cover that case.
 

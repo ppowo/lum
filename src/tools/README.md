@@ -26,16 +26,10 @@ No vex state is read or migrated. If moving from vex, reinstall or sync tools ma
 
 ## Catalog
 
-Port the current vex code catalog only:
+The managed tool catalog contains only:
 
-- `difftastic` → `difft`
-- `fd` → `fd`
-- `jq` → `jq`
-- `ripgrep` → `rg`
 - `scc` → `scc`
-- `shellcheck` → `shellcheck`
 - `universal-ctags` → `ctags`
-- `yq` → `yq`
 
 Do not resurrect stale README-only tools from vex.
 

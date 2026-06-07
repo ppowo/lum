@@ -11,38 +11,6 @@ pub(crate) struct ToolSpec {
 
 pub(crate) const CATALOG: &[ToolSpec] = &[
     ToolSpec {
-        name: "difftastic",
-        binary: "difft",
-        description: "A structural diff that understands syntax",
-        version_args: &["--version"],
-        owner: "Wilfred",
-        repo: "difftastic",
-    },
-    ToolSpec {
-        name: "fd",
-        binary: "fd",
-        description: "A simple, fast and user-friendly alternative to find",
-        version_args: &["--version"],
-        owner: "sharkdp",
-        repo: "fd",
-    },
-    ToolSpec {
-        name: "jq",
-        binary: "jq",
-        description: "A lightweight and flexible command-line JSON processor",
-        version_args: &["--version"],
-        owner: "jqlang",
-        repo: "jq",
-    },
-    ToolSpec {
-        name: "ripgrep",
-        binary: "rg",
-        description: "Recursively searches directories for a regex pattern",
-        version_args: &["--version"],
-        owner: "BurntSushi",
-        repo: "ripgrep",
-    },
-    ToolSpec {
         name: "scc",
         binary: "scc",
         description: "Fast code counter with complexity",
@@ -51,28 +19,12 @@ pub(crate) const CATALOG: &[ToolSpec] = &[
         repo: "scc",
     },
     ToolSpec {
-        name: "shellcheck",
-        binary: "shellcheck",
-        description: "Static analysis for shell scripts",
-        version_args: &["--version"],
-        owner: "koalaman",
-        repo: "shellcheck",
-    },
-    ToolSpec {
         name: "universal-ctags",
         binary: "ctags",
         description: "Maintained ctags implementation for source code indexing",
         version_args: &[],
         owner: "universal-ctags",
         repo: "ctags-nightly-build",
-    },
-    ToolSpec {
-        name: "yq",
-        binary: "yq",
-        description: "YAML, JSON, XML, CSV, TSV and properties processor",
-        version_args: &["--version"],
-        owner: "mikefarah",
-        repo: "yq",
     },
 ];
 

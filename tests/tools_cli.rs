@@ -16,9 +16,8 @@ fn tools_ls_lists_the_managed_catalog() {
         .args(["tools", "ls"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("ripgrep"))
-        .stdout(predicates::str::contains("rg"))
-        .stdout(predicates::str::contains("shellcheck"));
+        .stdout(predicates::str::contains("scc"))
+        .stdout(predicates::str::contains("universal-ctags"));
 }
 
 #[test]
@@ -26,10 +25,10 @@ fn tools_status_reports_missing_tool() {
     let home = TempDir::new().unwrap();
 
     lum_with_env(&home)
-        .args(["tools", "status", "ripgrep"])
+        .args(["tools", "status", "scc"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("Tool:              ripgrep"))
+        .stdout(predicates::str::contains("Tool:              scc"))
         .stdout(predicates::str::contains("Managed:           no"))
         .stdout(predicates::str::contains("Exists:            no"));
 }
@@ -45,7 +44,7 @@ fn tools_rejects_unknown_tools_with_available_names() {
         .stderr(predicates::str::contains(
             "unknown managed tool \"missing\"",
         ))
-        .stderr(predicates::str::contains("ripgrep"));
+        .stderr(predicates::str::contains("scc"));
 }
 
 #[test]
@@ -53,10 +52,10 @@ fn tools_status_reports_unmanaged_existing_binary() {
     let home = TempDir::new().unwrap();
     let bin = home.path().join("data").join("lum").join("bin");
     std::fs::create_dir_all(&bin).unwrap();
-    std::fs::write(bin.join("rg"), "manual").unwrap();
+    std::fs::write(bin.join("scc"), "manual").unwrap();
 
     lum_with_env(&home)
-        .args(["tools", "status", "ripgrep"])
+        .args(["tools", "status", "scc"])
         .assert()
         .success()
         .stdout(predicates::str::contains("Managed:           no"))
@@ -66,18 +65,18 @@ fn tools_status_reports_unmanaged_existing_binary() {
 #[test]
 fn tools_install_uses_local_artifact_override_and_records_managed_state() {
     let home = TempDir::new().unwrap();
-    let artifact = home.path().join("rg-source");
-    std::fs::write(&artifact, "fake rg").unwrap();
+    let artifact = home.path().join("scc-source");
+    std::fs::write(&artifact, "fake scc").unwrap();
 
     lum_with_env(&home)
-        .env("LUM_TOOLS_TEST_ARTIFACT_RIPGREP", &artifact)
-        .args(["tools", "install", "ripgrep"])
+        .env("LUM_TOOLS_TEST_ARTIFACT_SCC", &artifact)
+        .args(["tools", "install", "scc"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("Installed ripgrep"));
+        .stdout(predicates::str::contains("Installed scc"));
 
     lum_with_env(&home)
-        .args(["tools", "status", "ripgrep"])
+        .args(["tools", "status", "scc"])
         .assert()
         .success()
         .stdout(predicates::str::contains("Managed:           yes"))
@@ -89,13 +88,13 @@ fn tools_install_protects_unmanaged_files_without_force() {
     let home = TempDir::new().unwrap();
     let bin = home.path().join("data").join("lum").join("bin");
     std::fs::create_dir_all(&bin).unwrap();
-    std::fs::write(bin.join("rg"), "manual").unwrap();
-    let artifact = home.path().join("rg-source");
-    std::fs::write(&artifact, "fake rg").unwrap();
+    std::fs::write(bin.join("scc"), "manual").unwrap();
+    let artifact = home.path().join("scc-source");
+    std::fs::write(&artifact, "fake scc").unwrap();
 
     lum_with_env(&home)
-        .env("LUM_TOOLS_TEST_ARTIFACT_RIPGREP", &artifact)
-        .args(["tools", "install", "ripgrep"])
+        .env("LUM_TOOLS_TEST_ARTIFACT_SCC", &artifact)
+        .args(["tools", "install", "scc"])
         .assert()
         .failure()
         .stderr(predicates::str::contains("not managed by lum"));
@@ -106,15 +105,15 @@ fn tools_install_force_takes_over_unmanaged_files() {
     let home = TempDir::new().unwrap();
     let bin = home.path().join("data").join("lum").join("bin");
     std::fs::create_dir_all(&bin).unwrap();
-    std::fs::write(bin.join("rg"), "manual").unwrap();
-    let artifact = home.path().join("rg-source");
-    std::fs::write(&artifact, "fake rg").unwrap();
+    std::fs::write(bin.join("scc"), "manual").unwrap();
+    let artifact = home.path().join("scc-source");
+    std::fs::write(&artifact, "fake scc").unwrap();
 
     lum_with_env(&home)
-        .env("LUM_TOOLS_TEST_ARTIFACT_RIPGREP", &artifact)
-        .args(["tools", "install", "ripgrep", "--force"])
+        .env("LUM_TOOLS_TEST_ARTIFACT_SCC", &artifact)
+        .args(["tools", "install", "scc", "--force"])
         .assert()
         .success();
 
-    assert_eq!(std::fs::read_to_string(bin.join("rg")).unwrap(), "fake rg");
+    assert_eq!(std::fs::read_to_string(bin.join("scc")).unwrap(), "fake scc");
 }

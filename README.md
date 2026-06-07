@@ -5,7 +5,7 @@
 The most useful commands for new users are:
 
 - `lum env` — manage API-key-style environment variables and add lum's managed tool directory to your shell `PATH`.
-- `lum tools` — install and update curated CLI tools like `ripgrep`, `fd`, `jq`, `yq`, `difftastic`, `shellcheck`, and others.
+- `lum tools` — install and update curated CLI tools like `scc` and `universal-ctags`.
 
 ## Install
 
@@ -166,23 +166,16 @@ Available tools:
 
 | Tool | Binary | Description |
 | --- | --- | --- |
-| `difftastic` | `difft` | Structural diff that understands syntax |
-| `fd` | `fd` | Fast alternative to `find` |
-| `jq` | `jq` | JSON processor |
-| `ripgrep` | `rg` | Fast recursive text search |
 | `scc` | `scc` | Code counter with complexity |
-| `shellcheck` | `shellcheck` | Shell script static analyzer |
-| `universal-ctags` | `ctags` | Source code indexer |
-| `yq` | `yq` | YAML/JSON/XML/CSV processor |
 
 Common commands:
 
 ```sh
 lum tools ls
-lum tools install ripgrep
-lum tools status ripgrep
-lum tools version ripgrep
-lum tools update ripgrep
+lum tools install scc
+lum tools status scc
+lum tools version scc
+lum tools update scc
 lum tools sync
 lum tools sync --dry-run
 ```

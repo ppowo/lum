@@ -167,6 +167,7 @@ Available tools:
 | Tool | Binary | Description |
 | --- | --- | --- |
 | `scc` | `scc` | Code counter with complexity |
+| `universal-ctags` | `ctags` | Source code indexer |
 
 Common commands:
 

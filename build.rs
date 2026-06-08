@@ -1,3 +1,30 @@
+use std::process::Command;
+
 fn main() {
-    built::write_built_file().expect("built failed to acquire build metadata");
+    println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=.git/refs/heads");
+
+    println!("cargo:rustc-env=LUM_BUILD_TIME_UTC={}", build_time());
+
+    if let Some(hash) = git_commit_hash_short() {
+        println!("cargo:rustc-env=LUM_GIT_COMMIT_HASH_SHORT={hash}");
+    }
+}
+
+fn build_time() -> String {
+    chrono::Utc::now()
+        .format("%Y-%m-%d %H:%M:%S UTC")
+        .to_string()
+}
+
+fn git_commit_hash_short() -> Option<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--short=12", "HEAD"])
+        .output()
+        .ok()?;
+
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
 }

@@ -13,14 +13,12 @@ use crate::yt::resolve_yt_dlp;
 use player::ExternalPlayer;
 use stations::{Station, StationKind};
 
-const COMMAND_HELP: &str = "Commands:\n  lum radio <code>  play a station (example: lum radio atma)\n  lum radio status  show playback state\n  lum radio pause   pause the live stream\n  lum radio resume  resume the paused station\n  lum radio stop    stop playback";
+const COMMAND_HELP: &str = "Commands:\n  lum radio <code>  play a station (example: lum radio atma)\n  lum radio status  show playback state\n  lum radio stop    stop playback";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RadioCommand {
     List,
     Status,
-    Pause,
-    Resume,
     Stop,
     Play { code: String },
 }
@@ -29,8 +27,6 @@ pub fn parse_command(args: &RadioArgs) -> RadioCommand {
     match args.arg.as_deref() {
         None | Some("list") => RadioCommand::List,
         Some("status") => RadioCommand::Status,
-        Some("pause") => RadioCommand::Pause,
-        Some("resume") => RadioCommand::Resume,
         Some("stop") => RadioCommand::Stop,
         Some(code) => RadioCommand::Play {
             code: code.to_string(),
@@ -44,7 +40,6 @@ struct RadioState {
     start_time: Option<u64>,
     code: String,
     description: String,
-    paused: bool,
 }
 
 pub async fn run(args: RadioArgs) -> Result<()> {
@@ -57,8 +52,6 @@ pub async fn run(args: RadioArgs) -> Result<()> {
             print_status()?;
             Ok(())
         }
-        RadioCommand::Pause => pause(),
-        RadioCommand::Resume => resume().await,
         RadioCommand::Stop => stop(),
         RadioCommand::Play { code } => {
             let station = stations::find(&code).with_context(|| {
@@ -82,46 +75,8 @@ async fn play(station: Station) -> Result<()> {
         start_time: player.start_time,
         code: station.code.to_string(),
         description: station.description.to_string(),
-        paused: false,
     })?;
     println!("playing {} {}", station.code, station.description);
-    Ok(())
-}
-
-fn pause() -> Result<()> {
-    let Some(mut state) = read_state()? else {
-        println!("stopped");
-        bail!("no radio player is running");
-    };
-
-    if !state.paused {
-        ExternalPlayer::stop(state.pid, state.start_time);
-        state.paused = true;
-        write_state(&state)?;
-    }
-
-    println!("paused {} {}", state.code, state.description);
-    Ok(())
-}
-
-async fn resume() -> Result<()> {
-    let Some(mut state) = read_state()? else {
-        println!("stopped");
-        bail!("no radio player is running");
-    };
-
-    if state.paused || !ExternalPlayer::is_alive(state.pid, state.start_time) {
-        let station = stations::find(&state.code)
-            .with_context(|| format!("station no longer exists: {}", state.code))?;
-        let url = playable_url(*station).await?;
-        let player = ExternalPlayer::start(&url).await?;
-        state.pid = player.pid;
-        state.start_time = player.start_time;
-        state.paused = false;
-        write_state(&state)?;
-    }
-
-    println!("playing {} {}", state.code, state.description);
     Ok(())
 }
 
@@ -137,14 +92,13 @@ fn print_status() -> Result<()> {
         return Ok(());
     };
 
-    if state.paused {
-        println!("paused {} {}", state.code, state.description);
-    } else if ExternalPlayer::is_alive(state.pid, state.start_time) {
+    if ExternalPlayer::is_alive(state.pid, state.start_time) {
         println!("playing {} {}", state.code, state.description);
     } else {
         let _ = remove_state();
         println!("stopped");
     }
+
     Ok(())
 }
 
@@ -237,6 +191,30 @@ mod tests {
             }),
             RadioCommand::Play {
                 code: "atma".into()
+            }
+        );
+    }
+
+    #[test]
+    fn pause_routes_as_play_command() {
+        assert_eq!(
+            parse_command(&RadioArgs {
+                arg: Some("pause".into())
+            }),
+            RadioCommand::Play {
+                code: "pause".into()
+            }
+        );
+    }
+
+    #[test]
+    fn resume_routes_as_play_command() {
+        assert_eq!(
+            parse_command(&RadioArgs {
+                arg: Some("resume".into())
+            }),
+            RadioCommand::Play {
+                code: "resume".into()
             }
         );
     }

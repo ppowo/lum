@@ -9,8 +9,6 @@
 - `lum radio <code>` starts a station in the background, replacing any current station.
 - `lum radio status` prints the remembered playback state.
 - `lum radio stop` stops playback.
-- `lum radio pause` stops the live stream and remembers the station as paused.
-- `lum radio resume` reconnects to the paused station.
 - Preserve existing `ruv` station codes and the plain output style.
 
 ## Playback Stack
@@ -39,8 +37,6 @@ Out of scope unless a real station requires it:
 
 Controls are process-backed, not terminal-key backed:
 
-- `pause` is a live pause: stop `ffplay` and keep station state as paused. No audio is buffered.
-- `resume` starts a new `ffplay` process for the remembered station.
 - `stop` kills the remembered `ffplay` process only if the current process still matches ffplay identity/start-time state, then clears state.
 - Starting a new station stops the remembered process and starts the new station.
 
@@ -49,7 +45,6 @@ State is stored in lum's platform-native state directory as `radio-player.json`,
 User-facing output remains plain/script-friendly:
 
 - `playing <code> <description>`
-- `paused <code> <description>`
 - `stopped`
 
 ## Tests

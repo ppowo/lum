@@ -4,7 +4,7 @@ Status: Accepted
 
 ## Context
 
-`lum radio` reimplements the old `ruv` workflow: list built-in stations, play a station, stop playback, check status, and live pause/resume by reconnecting.
+`lum radio` reimplements the old `ruv` workflow: list built-in stations, play a station, stop playback, and check status. Pause/resume were later removed by ADR-0010.
 
 The first Rust implementation direction used a pure Rust foreground playback stack:
 
@@ -43,13 +43,9 @@ Lum does not own:
 
 This greatly reduces implementation surface area and dependency surface for radio playback. The pure Rust playback stack dependencies should stay removed unless a future ADR reverses this decision.
 
-`lum radio <code>` starts `ffplay` detached and records `radio-player.json` state containing the process id, process start time when available, station code, station description, and paused flag.
+`lum radio <code>` starts `ffplay` detached and records `radio-player.json` state containing the process id, process start time when available, station code, and station description.
 
-`pause` is a live pause: lum stops `ffplay` and remembers the station. No audio is buffered.
-
-`resume` starts a new `ffplay` process for the remembered station.
-
-`stop` kills the remembered `ffplay` process and clears state.
+`stop` kills the remembered `ffplay` process and clears state. Pause/resume behavior is intentionally not part of the current radio interface; see ADR-0010.
 
 `status` is based on lum's remembered state plus a process identity/aliveness check. Lum verifies the remembered PID still looks like ffplay and, when start time is known, that it is the same process instance. It is intentionally simpler than a full playback telemetry channel.
 

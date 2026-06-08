@@ -115,5 +115,8 @@ fn tools_install_force_takes_over_unmanaged_files() {
         .assert()
         .success();
 
-    assert_eq!(std::fs::read_to_string(bin.join("scc")).unwrap(), "fake scc");
+    assert_eq!(
+        std::fs::read_to_string(bin.join("scc")).unwrap(),
+        "fake scc"
+    );
 }

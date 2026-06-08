@@ -104,7 +104,6 @@ fn asset_for_current_platform(spec: &ToolSpec, version: &str) -> Result<(String,
     Ok((asset, binary_path))
 }
 
-
 fn scc_asset(os: &str, arch: &str) -> Result<String> {
     let osn = match os {
         "macos" => "Darwin",
@@ -123,7 +122,6 @@ fn scc_asset(os: &str, arch: &str) -> Result<String> {
         if os == "windows" { "zip" } else { "tar.gz" }
     ))
 }
-
 
 fn ctags_asset(version: &str, os: &str, arch: &str) -> Result<String> {
     let osn = match os {

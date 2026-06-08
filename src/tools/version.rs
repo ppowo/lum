@@ -79,7 +79,10 @@ mod tests {
 
     #[test]
     fn extract_version_from_sentence() {
-        assert_eq!(extract_version("scc version 3.5.0"), Some("3.5.0".to_owned()));
+        assert_eq!(
+            extract_version("scc version 3.5.0"),
+            Some("3.5.0".to_owned())
+        );
     }
 
     #[test]

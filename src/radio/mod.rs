@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
+use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
 use crate::cli::RadioArgs;
@@ -163,9 +164,7 @@ fn youtube_stream_url_args(url: &str) -> [&str; 5] {
 }
 
 pub(crate) async fn run_playlist_runner(code: String) -> Result<()> {
-    let urls = stations::playlist_urls(&code)
-        .with_context(|| format!("unknown radio playlist station '{code}'"))?;
-
+    let urls = randomized_playlist_urls(&code)?;
     loop {
         for (index, url) in urls.iter().enumerate() {
             let item_number = index + 1;
@@ -186,6 +185,14 @@ pub(crate) async fn run_playlist_runner(code: String) -> Result<()> {
             }
         }
     }
+}
+
+fn randomized_playlist_urls(code: &str) -> Result<Vec<&'static str>> {
+    let mut urls = stations::playlist_urls(code)
+        .with_context(|| format!("unknown radio playlist station '{code}'"))?
+        .to_vec();
+    urls.shuffle(&mut rand::rng());
+    Ok(urls)
 }
 
 fn playlist_failure_message(code: &str, item_number: usize, url: &str, error: &str) -> String {
@@ -315,6 +322,16 @@ mod tests {
         assert!(message.contains("yt-dlp failed"));
     }
 
+    #[test]
+    fn playlist_runner_randomizes_a_copy_of_station_urls() {
+        let mut randomized = randomized_playlist_urls("aphx").unwrap();
+        randomized.sort_unstable();
+
+        let mut expected = stations::playlist_urls("aphx").unwrap().to_vec();
+        expected.sort_unstable();
+
+        assert_eq!(randomized, expected);
+    }
 
     #[test]
     fn youtube_resolution_requests_audio_only_for_radio() {

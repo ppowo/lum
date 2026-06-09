@@ -2,6 +2,7 @@
 pub enum StationKind {
     Direct,
     YouTube,
+    YouTubePlaylist,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +74,12 @@ const STATIONS: &[Station] = &[
         url: "https://www.youtube.com/watch?v=X4VbdwhkE10",
         kind: StationKind::YouTube,
     },
+    Station {
+        code: "aphx",
+        description: "Aphex Twin album playlist",
+        url: "playlist:aphx",
+        kind: StationKind::YouTubePlaylist,
+    },
 ];
 
 pub const fn all() -> &'static [Station] {
@@ -81,6 +88,16 @@ pub const fn all() -> &'static [Station] {
 
 pub fn find(code: &str) -> Option<&'static Station> {
     STATIONS.iter().find(|station| station.code == code)
+}
+
+pub fn playlist_urls(code: &str) -> Option<&'static [&'static str]> {
+    match code {
+        "aphx" => Some(&[
+            "https://www.youtube.com/watch?v=oR4gjzXs5EE",
+            "https://www.youtube.com/watch?v=Xw5AiRVqfqk",
+        ]),
+        _ => None,
+    }
 }
 
 pub fn format_listing() -> String {
@@ -102,6 +119,7 @@ mod tests {
             codes,
             [
                 "atma", "atm2", "ssom", "beat", "grve", "nood", "drmm", "9128", "arab", "ytlf",
+                "aphx",
             ]
         );
     }
@@ -120,6 +138,20 @@ mod tests {
     }
 
     #[test]
+    fn aphx_station_is_a_youtube_playlist_with_clean_album_urls() {
+        let station = find("aphx").expect("aphx station should exist");
+        assert_eq!(station.kind, StationKind::YouTubePlaylist);
+        assert_eq!(station.description, "Aphex Twin album playlist");
+        assert_eq!(
+            playlist_urls("aphx").expect("aphx playlist should have urls"),
+            &[
+                "https://www.youtube.com/watch?v=oR4gjzXs5EE",
+                "https://www.youtube.com/watch?v=Xw5AiRVqfqk",
+            ]
+        );
+    }
+
+    #[test]
     fn listing_matches_ruv_plain_format() {
         let listing = format_listing();
         assert!(listing.starts_with("atma  atma.fm Channel 1"));
@@ -127,9 +159,7 @@ mod tests {
             "\natm2  atma.fm Channel 2 - Darkwave, dark ambient, and neoclassical/gothic music"
         ));
         assert!(listing.contains("\nssom  SomaFM Space Station Soma"));
-        assert!(
-            listing.ends_with("ytlf  Lofi Girl - lofi hip hop radio - beats to relax/study to")
-        );
+        assert!(listing.ends_with("aphx  Aphex Twin album playlist"));
         assert_eq!(listing.lines().count(), all().len());
     }
 }

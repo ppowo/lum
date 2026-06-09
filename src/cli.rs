@@ -42,6 +42,9 @@ pub enum Commands {
     /// Generate shell completions.
     #[command(name = "__completions", hide = true)]
     Completions { shell: Shell },
+    /// Internal radio playlist loop runner.
+    #[command(name = "__radio_playlist_runner", hide = true)]
+    RadioPlaylistRunner { code: String },
     /// Listen to internet radio stations.
     Radio(RadioArgs),
     /// Backup and restore directories.
@@ -287,6 +290,7 @@ mod tests {
             Commands::Backup { .. }
             | Commands::Env { .. }
             | Commands::Completions { .. }
+            | Commands::RadioPlaylistRunner { .. }
             | Commands::Tools { .. }
             | Commands::Repos { .. }
             | Commands::GitId { .. }
@@ -306,6 +310,7 @@ mod tests {
             Commands::Backup { .. }
             | Commands::Env { .. }
             | Commands::Completions { .. }
+            | Commands::RadioPlaylistRunner { .. }
             | Commands::Tools { .. }
             | Commands::Repos { .. }
             | Commands::GitId { .. }
@@ -314,6 +319,15 @@ mod tests {
             | Commands::Vol { .. } => {
                 panic!("expected radio command")
             }
+        }
+    }
+
+    #[test]
+    fn parses_hidden_radio_playlist_runner() {
+        let cli = Cli::parse_from(["lum", "__radio_playlist_runner", "aphx"]);
+        match cli.command {
+            Commands::RadioPlaylistRunner { code } => assert_eq!(code, "aphx"),
+            _ => panic!("expected hidden radio playlist runner command"),
         }
     }
 }

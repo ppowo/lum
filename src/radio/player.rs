@@ -1,9 +1,10 @@
 use std::{
     ffi::OsStr,
+    path::Path,
     process::{Command, Stdio},
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
 
 use crate::ffmpeg;
@@ -29,6 +30,18 @@ impl ExternalPlayer {
         })
     }
 
+    pub(super) fn start_playlist(code: &str) -> Result<PlayerProcess> {
+        let exe = std::env::current_exe().context("failed to resolve lum executable")?;
+        let child = playlist_runner_command(exe, code)
+            .spawn()
+            .context("failed to start radio playlist runner")?;
+        let pid = child.id();
+        Ok(PlayerProcess {
+            pid,
+            start_time: process_start_time(pid),
+        })
+    }
+
     pub(super) fn is_alive(pid: u32, start_time: Option<u64>) -> bool {
         process_alive(pid, start_time)
     }
@@ -36,12 +49,42 @@ impl ExternalPlayer {
     pub(super) fn stop(pid: u32, start_time: Option<u64>) {
         kill_pid(pid, start_time);
     }
+
+    pub(super) fn is_alive_any(pid: u32, start_time: Option<u64>) -> bool {
+        process_alive_any(pid, start_time)
+    }
+
+    pub(super) fn stop_any(pid: u32, start_time: Option<u64>) {
+        kill_pid_any(pid, start_time);
+    }
+
+    pub(super) async fn play_until_exit(url: &str) -> Result<()> {
+        let ffplay = ffmpeg::resolve_ffplay().await?;
+        let status = ffplay_command(ffplay, url)
+            .arg("-autoexit")
+            .status()
+            .context("failed to start ffplay")?;
+        if !status.success() {
+            bail!("ffplay exited with code {:?}", status.code());
+        }
+        Ok(())
+    }
 }
 
 fn ffplay_command(ffplay: impl AsRef<std::ffi::OsStr>, url: &str) -> Command {
     let mut command = Command::new(ffplay);
     command
         .args(["-nodisp", "-hide_banner", "-loglevel", "error", url])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    command
+}
+
+fn playlist_runner_command(exe: impl AsRef<Path>, code: &str) -> Command {
+    let mut command = Command::new(exe.as_ref());
+    command
+        .args(["__radio_playlist_runner", code])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -59,6 +102,51 @@ fn kill_pid(pid: u32, start_time: Option<u64>) {
             _ => process.kill(),
         }
     });
+}
+
+fn process_alive_any(pid: u32, start_time: Option<u64>) -> bool {
+    with_process(pid, |process| {
+        process_start_time_matches(process.start_time(), start_time)
+    })
+    .unwrap_or(false)
+}
+
+fn kill_pid_any(pid: u32, start_time: Option<u64>) {
+    let pid = Pid::from_u32(pid);
+    let mut system = System::new_all();
+    system.refresh_processes(ProcessesToUpdate::All, true);
+
+    let Some(process) = system.process(pid) else {
+        return;
+    };
+    if !process_start_time_matches(process.start_time(), start_time) {
+        return;
+    }
+
+    kill_descendants(&system, pid);
+    terminate_process(process);
+}
+
+fn kill_descendants(system: &System, parent: Pid) {
+    let children: Vec<_> = system
+        .processes()
+        .iter()
+        .filter_map(|(pid, process)| (process.parent() == Some(parent)).then_some(*pid))
+        .collect();
+
+    for child in children {
+        kill_descendants(system, child);
+        if let Some(process) = system.process(child) {
+            terminate_process(process);
+        }
+    }
+}
+
+fn terminate_process(process: &sysinfo::Process) -> bool {
+    match process.kill_with(Signal::Term) {
+        Some(true) => true,
+        _ => process.kill(),
+    }
 }
 
 fn process_start_time(pid: u32) -> Option<u64> {
@@ -123,6 +211,17 @@ mod tests {
                 "https://example.test/stream"
             ]
         );
+    }
+
+    #[test]
+    fn playlist_runner_command_invokes_hidden_top_level_command() {
+        let command = playlist_runner_command("/bin/lum", "aphx");
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+
+        assert_eq!(args, ["__radio_playlist_runner", "aphx"]);
     }
 
     #[test]

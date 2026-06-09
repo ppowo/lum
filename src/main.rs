@@ -37,6 +37,7 @@ async fn run() -> Result<()> {
             clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
             Ok(())
         }
+        Commands::RadioPlaylistRunner { code } => radio::run_playlist_runner(code).await,
         Commands::Backup { command } => backup::run(command).await,
         Commands::Radio(args) => radio::run(args).await,
         Commands::Repos { command } => repos::run(command),

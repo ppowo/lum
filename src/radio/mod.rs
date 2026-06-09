@@ -40,6 +40,20 @@ struct RadioState {
     start_time: Option<u64>,
     code: String,
     description: String,
+    #[serde(default)]
+    process_kind: RadioProcessKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+enum RadioProcessKind {
+    Ffplay,
+    PlaylistRunner,
+}
+
+impl Default for RadioProcessKind {
+    fn default() -> Self {
+        Self::Ffplay
+    }
 }
 
 pub async fn run(args: RadioArgs) -> Result<()> {
@@ -68,13 +82,22 @@ pub async fn run(args: RadioArgs) -> Result<()> {
 
 async fn play(station: Station) -> Result<()> {
     let _ = stop_existing();
-    let url = playable_url(station).await?;
-    let player = ExternalPlayer::start(&url).await?;
+    let (player, process_kind) = match station.kind {
+        StationKind::YouTubePlaylist => (
+            ExternalPlayer::start_playlist(station.code)?,
+            RadioProcessKind::PlaylistRunner,
+        ),
+        _ => {
+            let url = playable_url(station).await?;
+            (ExternalPlayer::start(&url).await?, RadioProcessKind::Ffplay)
+        }
+    };
     write_state(&RadioState {
         pid: player.pid,
         start_time: player.start_time,
         code: station.code.to_string(),
         description: station.description.to_string(),
+        process_kind,
     })?;
     println!("playing {} {}", station.code, station.description);
     Ok(())
@@ -92,7 +115,7 @@ fn print_status() -> Result<()> {
         return Ok(());
     };
 
-    if ExternalPlayer::is_alive(state.pid, state.start_time) {
+    if process_is_alive(&state) {
         println!("playing {} {}", state.code, state.description);
     } else {
         let _ = remove_state();
@@ -105,21 +128,8 @@ fn print_status() -> Result<()> {
 async fn playable_url(station: Station) -> Result<String> {
     match station.kind {
         StationKind::Direct => Ok(station.url.to_string()),
-        StationKind::YouTube => {
-            let yt_dlp = resolve_yt_dlp().await?;
-            let output = Command::new(yt_dlp)
-                .args(["-g", "--no-playlist", station.url])
-                .output()
-                .context("failed to run yt-dlp")?;
-            if !output.status.success() {
-                bail!("yt-dlp failed to resolve YouTube station");
-            }
-            Ok(String::from_utf8_lossy(&output.stdout)
-                .lines()
-                .next()
-                .context("yt-dlp produced no stream URL")?
-                .to_string())
-        }
+        StationKind::YouTube => resolve_youtube_stream_url(station.url).await,
+        StationKind::YouTubePlaylist => bail!("playlist stations are not playable yet"),
     }
 }
 
@@ -127,9 +137,75 @@ fn stop_existing() -> Result<bool> {
     let Some(state) = read_state()? else {
         return Ok(false);
     };
-    ExternalPlayer::stop(state.pid, state.start_time);
+    stop_process(&state);
     remove_state()?;
     Ok(true)
+}
+
+async fn resolve_youtube_stream_url(url: &str) -> Result<String> {
+    let yt_dlp = resolve_yt_dlp().await?;
+    let output = Command::new(yt_dlp)
+        .args(youtube_stream_url_args(url))
+        .output()
+        .context("failed to run yt-dlp")?;
+    if !output.status.success() {
+        bail!("yt-dlp failed to resolve YouTube station");
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .next()
+        .context("yt-dlp produced no stream URL")?
+        .to_string())
+}
+
+fn youtube_stream_url_args(url: &str) -> [&str; 5] {
+    ["-g", "--no-playlist", "-f", "bestaudio", url]
+}
+
+pub(crate) async fn run_playlist_runner(code: String) -> Result<()> {
+    let urls = stations::playlist_urls(&code)
+        .with_context(|| format!("unknown radio playlist station '{code}'"))?;
+
+    loop {
+        for (index, url) in urls.iter().enumerate() {
+            let item_number = index + 1;
+            let stream_url = match resolve_youtube_stream_url(url).await {
+                Ok(stream_url) => stream_url,
+                Err(error) => {
+                    let message =
+                        playlist_failure_message(&code, item_number, url, &error.to_string());
+                    tracing::error!(station = %code, item = item_number, url = %url, error = %error, "{message}");
+                    bail!(message);
+                }
+            };
+
+            if let Err(error) = ExternalPlayer::play_until_exit(&stream_url).await {
+                let message = playlist_failure_message(&code, item_number, url, &error.to_string());
+                tracing::error!(station = %code, item = item_number, url = %url, error = %error, "{message}");
+                bail!(message);
+            }
+        }
+    }
+}
+
+fn playlist_failure_message(code: &str, item_number: usize, url: &str, error: &str) -> String {
+    format!("radio playlist '{code}' failed at item {item_number} ({url}): {error}")
+}
+
+fn process_is_alive(state: &RadioState) -> bool {
+    match state.process_kind {
+        RadioProcessKind::Ffplay => ExternalPlayer::is_alive(state.pid, state.start_time),
+        RadioProcessKind::PlaylistRunner => {
+            ExternalPlayer::is_alive_any(state.pid, state.start_time)
+        }
+    }
+}
+
+fn stop_process(state: &RadioState) {
+    match state.process_kind {
+        RadioProcessKind::Ffplay => ExternalPlayer::stop(state.pid, state.start_time),
+        RadioProcessKind::PlaylistRunner => ExternalPlayer::stop_any(state.pid, state.start_time),
+    }
 }
 
 fn state_file() -> Result<PathBuf> {
@@ -216,6 +292,41 @@ mod tests {
             RadioCommand::Play {
                 code: "resume".into()
             }
+        );
+    }
+
+    #[test]
+    fn legacy_state_defaults_to_ffplay_process_kind() {
+        let state: RadioState = serde_json::from_str(
+            r#"{"pid":123,"start_time":456,"code":"atma","description":"atma.fm Channel 1"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(state.process_kind, RadioProcessKind::Ffplay);
+    }
+
+    #[test]
+    fn playlist_failure_message_names_station_item_and_error() {
+        let message =
+            playlist_failure_message("aphx", 2, "https://example.test/watch", "yt-dlp failed");
+        assert!(message.contains("aphx"));
+        assert!(message.contains("item 2"));
+        assert!(message.contains("https://example.test/watch"));
+        assert!(message.contains("yt-dlp failed"));
+    }
+
+
+    #[test]
+    fn youtube_resolution_requests_audio_only_for_radio() {
+        assert_eq!(
+            youtube_stream_url_args("https://www.youtube.com/watch?v=oR4gjzXs5EE"),
+            [
+                "-g",
+                "--no-playlist",
+                "-f",
+                "bestaudio",
+                "https://www.youtube.com/watch?v=oR4gjzXs5EE",
+            ]
         );
     }
 }

@@ -94,7 +94,7 @@ fn video_specific_args(height: Option<u32>) -> Vec<String> {
 fn album_specific_args() -> Vec<String> {
     vec![
         "-o".into(),
-        "%(uploader,artist|Unknown Artist)s - %(playlist_title)s/%(autonumber)s - %(title)s [%(abr)s].%(ext)s".into(),
+        "%(playlist_title)s/%(autonumber)s - %(title)s [%(abr)s].%(ext)s".into(),
         "-f".into(),
         "bestaudio/best".into(),
         "--yes-playlist".into(),

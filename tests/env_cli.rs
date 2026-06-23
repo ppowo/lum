@@ -41,6 +41,17 @@ fn env_rejects_unknown_aliases() {
 }
 
 #[test]
+fn env_aliases_lists_lilac_api_key() {
+    let home = TempDir::new().unwrap();
+
+    lum_with_env(&home)
+        .args(["env", "aliases"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("lilac      → LILAC_API_KEY"));
+}
+
+#[test]
 fn env_quotes_shell_values_safely() {
     let home = TempDir::new().unwrap();
 

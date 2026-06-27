@@ -45,16 +45,11 @@ struct RadioState {
     process_kind: RadioProcessKind,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 enum RadioProcessKind {
+    #[default]
     Ffplay,
     PlaylistRunner,
-}
-
-impl Default for RadioProcessKind {
-    fn default() -> Self {
-        Self::Ffplay
-    }
 }
 
 pub async fn run(args: RadioArgs) -> Result<()> {

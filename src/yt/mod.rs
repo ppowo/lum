@@ -26,7 +26,7 @@ pub async fn run(command: YtCommand) -> Result<()> {
             run_yt_dlp(&yt_dlp, &args, &dest_dir, &urls)
         }
         YtCommand::Alb { urls } => {
-            let args = args::album_args();
+            let args = args::album_args(&urls);
             let dest_dir = output_dirs::audio_dir();
             run_yt_dlp(&yt_dlp, &args, &dest_dir, &urls)
         }

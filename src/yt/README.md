@@ -21,6 +21,10 @@ lum yt alb <URL...>             # Album/playlist → ~/Music
 - `args.rs` — argument construction for each subcommand (base flags, format selectors, output templates, metadata cleanup)
 - `deps.rs` — yt-dlp binary resolution (`$PATH` → auto-provisioned → error)
 
+## Album folder naming
+
+`lum yt alb` builds the output folder from the album title. Bandcamp albums are prefixed with the artist (`Artist - Album`) because yt-dlp exposes the real artist per track (`album_artist`/`artist`). YouTube playlists keep the bare album title, because YouTube's per-entry `uploader` is the channel name, not the artist. Detection is by `bandcamp.com` in the URL (`has_bandcamp` in `args.rs`); if any URL is Bandcamp, the artist-prefixed template is used.
+
 ## What We Dropped vs the Go Version
 
 - **aria2c** — replaced by `--concurrent-fragments 8`. YouTube uses DASH fragments; aria2c's per-file split settings were ineffective.

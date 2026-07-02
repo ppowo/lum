@@ -11,9 +11,9 @@ pub fn video_args(height: Option<u32>) -> Vec<String> {
     args
 }
 
-pub fn album_args() -> Vec<String> {
+pub fn album_args(urls: &[String]) -> Vec<String> {
     let mut args = base_args();
-    args.extend(album_specific_args());
+    args.extend(album_specific_args(urls));
     args
 }
 
@@ -91,14 +91,28 @@ fn video_specific_args(height: Option<u32>) -> Vec<String> {
     args
 }
 
-fn album_specific_args() -> Vec<String> {
+fn album_specific_args(urls: &[String]) -> Vec<String> {
+    // Bandcamp exposes the artist as the per-entry `album_artist`/`artist`, so we
+    // can build an "Artist - Album" folder. YouTube's per-entry `uploader` is the
+    // channel name (not the artist), so for YouTube we keep the bare album title.
+    let folder = if has_bandcamp(urls) {
+        "%(album_artist,artist|Unknown Artist)s - %(playlist_title)s"
+    } else {
+        "%(playlist_title)s"
+    };
     vec![
         "-o".into(),
-        "%(playlist_title)s/%(autonumber)s - %(title)s [%(abr)s].%(ext)s".into(),
+        format!("{folder}/%(autonumber)s - %(title)s [%(abr)s].%(ext)s"),
         "-f".into(),
         "bestaudio/best".into(),
         "--yes-playlist".into(),
     ]
+}
+
+/// True if any URL targets Bandcamp, where the per-entry uploader/artist is the
+/// real artist (not a channel name).
+fn has_bandcamp(urls: &[String]) -> bool {
+    urls.iter().any(|u| u.contains("bandcamp.com"))
 }
 
 #[cfg(test)]
@@ -138,24 +152,61 @@ mod tests {
 
     #[test]
     fn album_args_enables_playlist() {
-        let args = album_args();
+        let args = album_args(&[]);
         assert!(args.contains(&"--yes-playlist".to_string()));
     }
 
     #[test]
     fn album_args_selects_bestaudio() {
-        let args = album_args();
+        let args = album_args(&[]);
         let f_idx = args.iter().position(|a| a == "-f").unwrap();
         assert_eq!(args[f_idx + 1], "bestaudio/best");
     }
 
     #[test]
     fn album_args_has_album_template() {
-        let args = album_args();
+        let args = album_args(&[]);
         let o_idx = args.iter().position(|a| a == "-o").unwrap();
         let template = &args[o_idx + 1];
         assert!(template.contains("%(playlist_title)s"));
         assert!(template.contains("%(autonumber)s"));
+    }
+
+    #[test]
+    fn album_args_bandcamp_prefixes_folder_with_artist() {
+        let urls = vec!["https://kylepreston.bandcamp.com/album/foo".to_string()];
+        let args = album_args(&urls);
+        let o_idx = args.iter().position(|a| a == "-o").unwrap();
+        let template = &args[o_idx + 1];
+        assert!(
+            template.starts_with("%(album_artist,artist|Unknown Artist)s - %(playlist_title)s/"),
+            "bandcamp template should prefix the folder with the artist, got: {template}"
+        );
+    }
+
+    #[test]
+    fn album_args_youtube_omits_artist_prefix() {
+        let urls = vec!["https://www.youtube.com/playlist?list=PLx".to_string()];
+        let args = album_args(&urls);
+        let o_idx = args.iter().position(|a| a == "-o").unwrap();
+        let template = &args[o_idx + 1];
+        assert!(
+            template.starts_with("%(playlist_title)s/"),
+            "youtube template should keep the bare album title, got: {template}"
+        );
+    }
+
+    #[test]
+    fn album_args_mixed_urls_treat_as_bandcamp() {
+        // One yt-dlp invocation uses one template; if any URL is Bandcamp we
+        // prefer the artist-prefixed folder so Bandcamp albums stay correct.
+        let urls = vec![
+            "https://www.youtube.com/playlist?list=PLx".to_string(),
+            "https://x.bandcamp.com/album/y".to_string(),
+        ];
+        let args = album_args(&urls);
+        let o_idx = args.iter().position(|a| a == "-o").unwrap();
+        assert!(args[o_idx + 1].contains("%(album_artist,artist|Unknown Artist)s"));
     }
 
     #[test]

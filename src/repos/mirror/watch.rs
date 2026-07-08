@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn startup_message_with_matching_tag() {
-        let repos = vec![
+        let repos = [
             config::RepoEntry {
                 url: "https://github.com/example/repo-a.git".into(),
                 branch: "main".into(),

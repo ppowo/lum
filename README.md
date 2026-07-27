@@ -219,7 +219,7 @@ lum repos mirror status
 
 ### Git identities
 
-Manage folder-based Git author/SSH identities:
+Manage folder-based Git author identities with SSH or declarative HTTP Basic authentication:
 
 ```sh
 lum git-id init
@@ -232,7 +232,7 @@ lum git-id pubkey <identity>
 lum git-id paths
 ```
 
-See `src/git_id/README.md` for config shape, ownership markers, generated files, and routing behavior.
+See `src/git_id/README.md` for config shape, plaintext-credential warnings, ownership markers, generated files, and routing behavior.
 
 ## Build from source
 

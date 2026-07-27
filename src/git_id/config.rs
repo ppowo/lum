@@ -1,18 +1,51 @@
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+use secrecy::{ExposeSecret, SecretString};
+use serde::Deserialize;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct Identity {
     pub name: String,
     pub author_name: String,
     pub email: String,
     pub domain: String,
     pub folders: Vec<String>,
+    #[serde(default)]
+    pub authentication: Authentication,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub enum Authentication {
+    #[default]
+    Ssh,
+    HttpBasic {
+        scheme: HttpScheme,
+        username: String,
+        password: SecretString,
+        #[serde(default)]
+        allow_insecure_http: bool,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum HttpScheme {
+    Http,
+    Https,
+}
+
+impl HttpScheme {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Http => "http",
+            Self::Https => "https",
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
 pub struct GitIdentitiesConfig {
     pub identities: Vec<Identity>,
 }
@@ -23,6 +56,49 @@ pub fn config_path() -> Result<PathBuf> {
 
 pub fn data_dir() -> Result<PathBuf> {
     crate::paths::git_id_data_dir()
+}
+
+pub fn create_private_config(path: &Path, content: &[u8]) -> Result<()> {
+    use std::io::Write as _;
+
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(path)
+        .with_context(|| format!("creating {}", path.display()))?;
+    file.write_all(content)
+        .with_context(|| format!("writing {}", path.display()))?;
+    Ok(())
+}
+
+pub fn harden_config_permissions(path: &Path) -> Result<()> {
+    let _ = path;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = std::fs::metadata(path)?.permissions();
+        permissions.set_mode(0o600);
+        std::fs::set_permissions(path, permissions)?;
+    }
+    Ok(())
+}
+
+pub fn ensure_private_config_permissions(path: &Path) -> Result<()> {
+    let _ = path;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(path)?.permissions().mode();
+        if mode & 0o077 != 0 {
+            anyhow::bail!("git identity config permissions are not private; run lum git-id sync");
+        }
+    }
+    Ok(())
 }
 
 pub fn load_config() -> Result<Vec<Identity>> {
@@ -57,6 +133,11 @@ fn validate(identities: &[Identity]) -> Result<()> {
         if identity.domain.trim().is_empty() {
             anyhow::bail!("identity {}: domain must not be empty", identity.name);
         }
+        validate_protocol_scalar(identity, "name", &identity.name)?;
+        validate_protocol_scalar(identity, "author_name", &identity.author_name)?;
+        validate_protocol_scalar(identity, "email", &identity.email)?;
+        validate_domain(identity)?;
+        validate_authentication(identity)?;
         if identity.folders.is_empty() {
             anyhow::bail!(
                 "identity {}: at least one folder is required",
@@ -89,6 +170,91 @@ fn validate(identities: &[Identity]) -> Result<()> {
                 anyhow::bail!("duplicate managed folder: {}", folder);
             }
         }
+    }
+    Ok(())
+}
+
+fn validate_authentication(identity: &Identity) -> Result<()> {
+    let Authentication::HttpBasic {
+        scheme,
+        username,
+        password,
+        allow_insecure_http,
+    } = &identity.authentication
+    else {
+        return Ok(());
+    };
+
+    if username.trim().is_empty() {
+        anyhow::bail!(
+            "identity {}: authentication username must not be empty",
+            identity.name
+        );
+    }
+    validate_protocol_scalar(identity, "authentication username", username)?;
+    let password = password.expose_secret();
+    if password.is_empty() {
+        anyhow::bail!(
+            "identity {}: authentication password must not be empty",
+            identity.name
+        );
+    }
+    if password
+        .bytes()
+        .any(|byte| matches!(byte, b'\0' | b'\n' | b'\r'))
+    {
+        anyhow::bail!(
+            "identity {}: authentication password must not contain NUL, CR, or LF",
+            identity.name
+        );
+    }
+
+    match (scheme, allow_insecure_http) {
+        (HttpScheme::Http, false) => anyhow::bail!(
+            "identity {}: plain HTTP exposes credentials on the network; set allow_insecure_http to true to acknowledge this",
+            identity.name
+        ),
+        (HttpScheme::Https, true) => anyhow::bail!(
+            "identity {}: allow_insecure_http is only valid with the http scheme",
+            identity.name
+        ),
+        _ => Ok(()),
+    }
+}
+
+fn validate_domain(identity: &Identity) -> Result<()> {
+    let candidate = format!("https://{}/", identity.domain);
+    let url = url::Url::parse(&candidate).with_context(|| {
+        format!(
+            "identity {}: domain must be a host with an optional port",
+            identity.name
+        )
+    })?;
+    if url.host().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        anyhow::bail!(
+            "identity {}: domain must be a host with an optional port, without a scheme or path",
+            identity.name
+        );
+    }
+    Ok(())
+}
+
+fn validate_protocol_scalar(identity: &Identity, field: &str, value: &str) -> Result<()> {
+    if value
+        .bytes()
+        .any(|byte| matches!(byte, b'\0' | b'\n' | b'\r'))
+    {
+        anyhow::bail!(
+            "identity {}: {} must not contain NUL, CR, or LF",
+            identity.name,
+            field
+        );
     }
     Ok(())
 }

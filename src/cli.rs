@@ -45,6 +45,9 @@ pub enum Commands {
     /// Internal radio playlist loop runner.
     #[command(name = "__radio_playlist_runner", hide = true)]
     RadioPlaylistRunner { code: String },
+    /// Internal Git credential helper.
+    #[command(name = "__git_credential", hide = true)]
+    GitCredential { route_id: String, operation: String },
     /// Listen to internet radio stations.
     Radio(RadioArgs),
     /// Backup and restore directories.
@@ -291,6 +294,7 @@ mod tests {
             | Commands::Env { .. }
             | Commands::Completions { .. }
             | Commands::RadioPlaylistRunner { .. }
+            | Commands::GitCredential { .. }
             | Commands::Tools { .. }
             | Commands::Repos { .. }
             | Commands::GitId { .. }
@@ -311,6 +315,7 @@ mod tests {
             | Commands::Env { .. }
             | Commands::Completions { .. }
             | Commands::RadioPlaylistRunner { .. }
+            | Commands::GitCredential { .. }
             | Commands::Tools { .. }
             | Commands::Repos { .. }
             | Commands::GitId { .. }

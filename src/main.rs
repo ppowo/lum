@@ -19,17 +19,28 @@ use cli::{Cli, Commands};
 
 #[tokio::main]
 async fn main() {
-    if let Err(error) = run().await {
+    let cli = Cli::parse();
+    if let Commands::GitCredential {
+        route_id,
+        operation,
+    } = &cli.command
+    {
+        if let Err(error) = git_id::run_credential_helper(route_id, operation) {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
+    if let Err(error) = run(cli).await {
         eprintln!("{error:#}");
         tracing::error!(error = ?error, "command failed");
         std::process::exit(1);
     }
 }
 
-async fn run() -> Result<()> {
+async fn run(cli: Cli) -> Result<()> {
     let _log_guard = logging::init()?;
-    let cli = Cli::parse();
-
     match cli.command {
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
@@ -38,6 +49,7 @@ async fn run() -> Result<()> {
             Ok(())
         }
         Commands::RadioPlaylistRunner { code } => radio::run_playlist_runner(code).await,
+        Commands::GitCredential { .. } => unreachable!("credential helper handled before logging"),
         Commands::Backup { command } => backup::run(command).await,
         Commands::Radio(args) => radio::run(args).await,
         Commands::Repos { command } => repos::run(command),

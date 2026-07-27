@@ -1,6 +1,6 @@
 # Git ID Subcommand
 
-`lum git-id` manages folder-based Git identities. The user edits one JSON config, then `lum git-id sync` converges generated SSH keys and Git/SSH configuration from that source of truth.
+`lum git-id` manages folder-based Git identities. The user edits one JSON config, then `lum git-id sync` converges signing keys and folder-scoped Git authentication from that source of truth.
 
 ## CLI Shape
 
@@ -33,6 +33,31 @@ The config path is resolved through lum's centralized platform directory policy 
 }
 ```
 
+HTTP Basic authentication is optional per identity. The `password` value may be an account password or a provider access token:
+
+```json
+{
+  "identities": [
+    {
+      "name": "internal-work",
+      "author_name": "Jane Doe",
+      "email": "jane@company.com",
+      "domain": "gitlab.internal.example",
+      "folders": ["~/Work/Internal"],
+      "authentication": {
+        "type": "http-basic",
+        "scheme": "http",
+        "username": "jane",
+        "password": "replace-me",
+        "allow_insecure_http": true
+      }
+    }
+  ]
+}
+```
+
+Omitting `authentication` keeps the existing SSH behavior. For HTTPS, set `scheme` to `https` and omit `allow_insecure_http`. Plain HTTP transmits the username and password/token without encryption, so lum rejects it unless `allow_insecure_http` is explicitly `true`.
+
 - `name` is the stable identity ID. Renaming creates a new identity and orphans old marked artifacts.
 - `author_name` is Git's `user.name`; it is not a hosting-service username.
 - Duplicate identity names are rejected.
@@ -40,6 +65,9 @@ The config path is resolved through lum's centralized platform directory policy 
 - Duplicate `email + domain` is rejected.
 - Duplicate `author_name + domain` is rejected.
 - Same email or author name across different domains is allowed.
+- `authentication.username` is the hosting-service login; it is separate from `author_name`.
+- `authentication.password` is stored as plaintext in this config. Prefer a narrowly scoped access token when the provider supports one.
+- A domain is a host with an optional port, without a URL scheme or repository path.
 
 ## Language
 
@@ -57,14 +85,15 @@ The config path is resolved through lum's centralized platform directory policy 
 
 For each configured identity, sync:
 
-1. Creates managed folders.
-2. Generates a namespaced Ed25519 SSH key via `ssh-keygen` when missing.
-3. Writes a per-identity Git config.
-4. Updates lum-marked sections in global `~/.gitconfig`.
-5. Updates lum-marked sections in `~/.ssh/config`.
-6. Updates lum-marked sections in `~/.ssh/allowed_signers`.
-7. Backs up and removes orphaned lum-marked artifacts.
-8. Deletes backups older than 30 days.
+1. Restricts the JSON config to owner-only permissions on Unix.
+2. Creates managed folders.
+3. Generates a namespaced Ed25519 SSH signing key via `ssh-keygen` when missing.
+4. Writes a per-identity Git config with either SSH routing or an HTTP credential helper.
+5. Updates lum-marked sections in global `~/.gitconfig`.
+6. Updates lum-marked sections in `~/.ssh/config` for SSH-authenticated identities.
+7. Updates lum-marked sections in `~/.ssh/allowed_signers` for every identity.
+8. Backs up and removes orphaned lum-marked artifacts.
+9. Deletes backups older than 30 days.
 
 ## Ownership and Safety
 
@@ -81,6 +110,8 @@ Markers:
 
 Unmarked files at generated paths are conflicts and must not be overwritten or deleted automatically.
 
+At rest, the HTTP password/token remains only in `git-identities.json`; generated Git configs contain the username and a command that invokes lum, but not the password. Lum does not use an OS keyring or generate a Git credential-store file. On Unix, `init` creates the config as mode `0600`, `sync` restores that mode, and the credential helper refuses to expose a secret if group or other permissions are present. Windows relies on the ACL of the platform user config directory.
+
 ## Generated Paths
 
 Generated files are namespaced with `lum-git-id-`:
@@ -93,11 +124,11 @@ Generated files are namespaced with `lum-git-id-`:
 
 `lum git-id pubkey <identity>` prints only the public key to stdout for clipboard piping.
 
-## Git and SSH Routing
+## Git Authentication Routing
 
-Folder-specific routing is done with Git `includeIf` sections and per-identity `core.sshCommand`.
+Folder-specific routing is done with Git `includeIf` sections and per-identity Git configuration.
 
-Per-identity Git configs include:
+SSH-authenticated identity configs include:
 
 ```gitconfig
 [user]
@@ -124,3 +155,19 @@ Per-identity Git configs include:
 The HTTPS-to-SSH rewrite is scoped to managed folders through the per-identity config. Lum does not rewrite repository remotes.
 
 Direct SSH commands such as `ssh -T git@github.com` are not folder-aware; they use the default domain identity from the generated SSH config.
+
+### HTTP Basic authentication
+
+HTTP-authenticated identities keep the SSH public key for commit signing, but omit `core.sshCommand`, the HTTPS-to-SSH rewrite, and the SSH `Host` entry. Their folder-scoped Git config contains:
+
+```gitconfig
+[credential "http://gitlab.internal.example"]
+  username = "jane"
+  useHttpPath = false
+  helper =
+  helper = "!'/absolute/path/to/lum' __git_credential <route-id>"
+```
+
+The empty helper resets lower-priority global helpers for this exact protocol and host. Git then invokes lum through its standard credential-helper protocol. Lum returns a credential only when the route, protocol, host, and any supplied username match the identity. `store` and `erase` never rewrite the JSON config.
+
+Changing only `authentication.password` takes effect on the next Git operation. Run `lum git-id sync` after changing the authentication type, scheme, username, domain, identity name, or lum executable location.

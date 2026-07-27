@@ -6,6 +6,8 @@ use crate::cli::GitIdCommand;
 mod artifacts;
 #[path = "git_id/config.rs"]
 mod config;
+#[path = "git_id/credential.rs"]
+mod credential;
 
 use crate::paths::expand_path;
 use artifacts::{
@@ -14,9 +16,13 @@ use artifacts::{
 };
 pub use config::config_path;
 use config::{
-    GitIdentitiesConfig, Identity, allowed_signers_path, data_dir, detect_identity, git_path,
+    Authentication, Identity, allowed_signers_path, data_dir, detect_identity, git_path,
     identity_git_config_path, identity_private_key_path, identity_public_key_path, load_config,
 };
+
+pub fn run_credential_helper(route_id: &str, operation: &str) -> Result<()> {
+    credential::run(route_id, operation)
+}
 
 pub fn run(command: GitIdCommand) -> Result<()> {
     match command {
@@ -43,16 +49,16 @@ fn init() -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let sample = GitIdentitiesConfig {
-        identities: vec![Identity {
-            name: "github-work".into(),
-            author_name: "Jane Doe".into(),
-            email: "jane@company.com".into(),
-            domain: "github.com".into(),
-            folders: vec!["~/Work/Github".into()],
-        }],
-    };
-    std::fs::write(&path, serde_json::to_string_pretty(&sample)?)?;
+    let sample = serde_json::json!({
+        "identities": [{
+            "name": "github-work",
+            "author_name": "Jane Doe",
+            "email": "jane@company.com",
+            "domain": "github.com",
+            "folders": ["~/Work/Github"]
+        }]
+    });
+    config::create_private_config(&path, serde_json::to_string_pretty(&sample)?.as_bytes())?;
     println!("Created {} with a sample git identity", path.display());
     Ok(())
 }
@@ -70,6 +76,8 @@ fn where_am_i() -> Result<()> {
 }
 
 fn sync() -> Result<()> {
+    let path = config_path()?;
+    config::harden_config_permissions(&path)?;
     let identities = load_config()?;
     ensure_ssh_keygen_on_path()?;
     cleanup_old_backups()?;
@@ -168,20 +176,31 @@ fn write_identity_git_config(identity: &Identity) -> Result<()> {
             path.display()
         );
     }
-    let private_key = git_path(&identity_private_key_path(identity)?);
     let public_key = git_path(&identity_public_key_path(identity)?);
     let allowed_signers = git_path(&allowed_signers_path()?);
-    let content = format!(
-        "# lum:git-id:managed identity={}\n\n[user]\n  name = {}\n  email = {}\n  signingkey = {}\n\n[core]\n  sshCommand = \"ssh -i {} -o IdentitiesOnly=yes\"\n\n[commit]\n  gpgsign = true\n\n[gpg]\n  format = ssh\n\n[gpg \"ssh\"]\n  allowedSignersFile = {}\n\n[url \"ssh://git@{}/\"]\n  insteadOf = https://{}/\n",
-        identity.name,
-        identity.author_name,
-        identity.email,
-        public_key,
-        private_key,
-        allowed_signers,
-        identity.domain,
-        identity.domain
+    let mut content = format!(
+        "# lum:git-id:managed identity={}\n\n[user]\n  name = {}\n  email = {}\n  signingkey = {}\n\n[commit]\n  gpgsign = true\n\n[gpg]\n  format = ssh\n\n[gpg \"ssh\"]\n  allowedSignersFile = {}\n",
+        identity.name, identity.author_name, identity.email, public_key, allowed_signers,
     );
+    match &identity.authentication {
+        Authentication::Ssh => {
+            let private_key = git_path(&identity_private_key_path(identity)?);
+            content.push_str(&format!(
+                "\n[core]\n  sshCommand = \"ssh -i {} -o IdentitiesOnly=yes\"\n\n[url \"ssh://git@{}/\"]\n  insteadOf = https://{}/\n",
+                private_key, identity.domain, identity.domain
+            ));
+        }
+        Authentication::HttpBasic {
+            scheme, username, ..
+        } => {
+            let helper = credential::helper_definition(&identity.name)?;
+            let username = credential::git_config_value(username);
+            content.push_str(&format!(
+                "\n[credential \"{}://{}\"]\n  username = {}\n  useHttpPath = false\n  helper =\n  helper = {}\n",
+                scheme.as_str(), identity.domain, username, helper
+            ));
+        }
+    }
     std::fs::write(path, content)?;
     Ok(())
 }
@@ -227,6 +246,9 @@ fn write_ssh_config(identities: &[Identity]) -> Result<()> {
     let mut seen = std::collections::HashSet::new();
     let mut section = String::from("# lum:git-id:begin\n");
     for identity in identities {
+        if !matches!(&identity.authentication, Authentication::Ssh) {
+            continue;
+        }
         if seen.insert(identity.domain.clone()) {
             section.push_str(&format!(
                 "Host {}\n  HostName {}\n  User git\n  IdentityFile {}\n  IdentitiesOnly yes\n\n",
@@ -278,6 +300,20 @@ fn info(name: &str) -> Result<()> {
     println!("Author:   {}", identity.author_name);
     println!("Email:    {}", identity.email);
     println!("Domain:   {}", identity.domain);
+    match &identity.authentication {
+        Authentication::Ssh => println!("Authentication: SSH"),
+        Authentication::HttpBasic {
+            scheme, username, ..
+        } => {
+            println!(
+                "Authentication: HTTP Basic ({}://{})",
+                scheme.as_str(),
+                identity.domain
+            );
+            println!("Username: {}", username);
+            println!("Password: configured");
+        }
+    }
     println!(
         "Git config: {}",
         identity_git_config_path(identity)?.display()

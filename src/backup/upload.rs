@@ -107,7 +107,7 @@ pub(crate) async fn download_archive(client: &Client, url: &str, destination: &P
 }
 
 pub(crate) fn restore_url(code: &str) -> String {
-    format!("{BACKUP_SERVICE_URL}/{code}.tar.gz")
+    format!("{BACKUP_SERVICE_URL}/{code}")
 }
 
 pub(crate) fn code_from_url(url: &str) -> Result<String> {
@@ -115,14 +115,14 @@ pub(crate) fn code_from_url(url: &str) -> Result<String> {
         .with_context(|| format!("failed to parse upload URL {url}"))?
         .path()
         .to_owned();
-    let file_name = Path::new(&path)
+    // The code is whatever file name the host returned. Hosts may rename the
+    // upload (x0.at truncates "archive.tar.gz" to "<id>.gz"), so restore must
+    // reuse it verbatim instead of assuming a ".tar.gz" suffix.
+    Path::new(&path)
         .file_name()
         .and_then(|name| name.to_str())
-        .ok_or_else(|| anyhow::anyhow!("upload failed: URL has no file name: {url}"))?;
-    file_name
-        .strip_suffix(".tar.gz")
         .map(str::to_owned)
-        .ok_or_else(|| anyhow::anyhow!("upload failed: URL did not end in .tar.gz: {url}"))
+        .ok_or_else(|| anyhow::anyhow!("upload failed: URL has no file name: {url}"))
 }
 
 fn clean_url(s: &str) -> String {
@@ -131,4 +131,29 @@ fn clean_url(s: &str) -> String {
         .collect::<String>()
         .trim()
         .to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{code_from_url, restore_url};
+
+    // The code is the exact file name the host returned, so restore must
+    // reconstruct the byte-identical URL regardless of how the host mangled
+    // the uploaded file name (x0.at truncates ".tar.gz" to ".gz").
+    #[test]
+    fn url_round_trips_through_code() {
+        for url in [
+            "https://x0.at/jtPb.gz",     // x0.at: drops the ".tar" part
+            "https://x0.at/Ab12.tar.gz", // host preserving the full suffix
+            "https://x0.at/Q9zc",        // host stripping the suffix entirely
+        ] {
+            let code = code_from_url(url).expect(url);
+            assert_eq!(restore_url(&code), url);
+        }
+    }
+
+    #[test]
+    fn code_from_url_rejects_url_without_file_name() {
+        assert!(code_from_url("https://x0.at/").is_err());
+    }
 }

@@ -144,6 +144,7 @@ Available aliases:
 | `exa` | `EXA_API_KEY` |
 | `lilac` | `LILAC_API_KEY` |
 | `neuralwatt` | `NEURALWATT_API_KEY` |
+| `opencode` | `OPENCODE_API_KEY` |
 | `openrouter` | `OPENROUTER_API_KEY` |
 | `synthetic` | `SYNTHETIC_API_KEY` |
 

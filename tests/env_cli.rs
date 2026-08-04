@@ -52,6 +52,31 @@ fn env_aliases_lists_lilac_api_key() {
 }
 
 #[test]
+fn env_set_opencode_emits_export_and_aliases_lists_it() {
+    let home = TempDir::new().unwrap();
+
+    lum_with_env(&home)
+        .args(["env", "set", "opencode", "oc-key"])
+        .assert()
+        .success()
+        .stdout("export OPENCODE_API_KEY='oc-key'\n");
+
+    lum_with_env(&home)
+        .args(["env", "aliases"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("opencode   → OPENCODE_API_KEY"));
+
+    lum_with_env(&home)
+        .args(["env", "init"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "export OPENCODE_API_KEY='oc-key'",
+        ));
+}
+
+#[test]
 fn env_quotes_shell_values_safely() {
     let home = TempDir::new().unwrap();
 

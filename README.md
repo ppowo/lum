@@ -141,6 +141,7 @@ Available aliases:
 
 | Alias | Environment variable |
 | --- | --- |
+| `deepseek` | `DEEPSEEK_API_KEY` |
 | `exa` | `EXA_API_KEY` |
 | `lilac` | `LILAC_API_KEY` |
 | `neuralwatt` | `NEURALWATT_API_KEY` |

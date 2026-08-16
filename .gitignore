@@ -24,3 +24,6 @@ target
 # Added by cargo
 
 /target
+
+# Pi coding agent local state
+.pi/

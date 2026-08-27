@@ -102,6 +102,29 @@ fn env_set_deepseek_emits_export_and_aliases_lists_it() {
 }
 
 #[test]
+fn env_set_zro_emits_export_and_aliases_lists_it() {
+    let home = TempDir::new().unwrap();
+
+    lum_with_env(&home)
+        .args(["env", "set", "zro", "zro-key"])
+        .assert()
+        .success()
+        .stdout("export ZRO_API_KEY='zro-key'\n");
+
+    lum_with_env(&home)
+        .args(["env", "aliases"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("zro        → ZRO_API_KEY"));
+
+    lum_with_env(&home)
+        .args(["env", "unset", "zro"])
+        .assert()
+        .success()
+        .stdout("unset ZRO_API_KEY\n");
+}
+
+#[test]
 fn env_quotes_shell_values_safely() {
     let home = TempDir::new().unwrap();
 

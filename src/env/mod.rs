@@ -72,17 +72,35 @@ fn unset(alias: &str, shell: EnvShell) -> Result<()> {
     Ok(())
 }
 
+struct EnvRow<'a> {
+    alias: &'a str,
+    variable: &'a str,
+    value: Option<&'a String>,
+}
+
 fn list() -> Result<()> {
     let stored = state::read_state()?;
     println!("Aliases (set with 'lum env set <alias> <value>'):");
-    for (alias, variable) in catalog::ALIASES {
-        if let Some(value) = stored.get(*alias) {
-            println!(
-                "  {alias:<10} {variable:<24} = {}",
+    let mut rows: Vec<EnvRow> = catalog::ALIASES
+        .iter()
+        .map(|(alias, variable)| EnvRow {
+            alias,
+            variable,
+            value: stored.get(*alias),
+        })
+        .collect();
+    // Stable sort: set aliases first, unset aliases last; catalog
+    // (alphabetical) order is preserved within each group.
+    rows.sort_by_key(|row| row.value.is_none());
+    for row in &rows {
+        match row.value {
+            Some(value) => println!(
+                "  {:<10} {:<24} = {}",
+                row.alias,
+                row.variable,
                 catalog::mask_secret(value)
-            );
-        } else {
-            println!("  {alias:<10} {variable:<24}   (not set)");
+            ),
+            None => println!("  {:<10} {:<24}   (not set)", row.alias, row.variable),
         }
     }
     println!();

@@ -158,6 +158,34 @@ fn env_list_masks_secret_values_and_shows_forced_defaults() {
 }
 
 #[test]
+fn env_list_orders_set_aliases_before_unset() {
+    let home = TempDir::new().unwrap();
+
+    lum_with_env(&home)
+        .args(["env", "set", "zro", "zro-key"])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(
+        lum_with_env(&home)
+            .args(["env", "list"])
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone(),
+    )
+    .unwrap();
+
+    let zro = stdout.find("zro ").expect("zro row printed");
+    let deepseek = stdout.find("deepseek").expect("unset deepseek row printed");
+    assert!(
+        zro < deepseek,
+        "set alias 'zro' should print before unset 'deepseek':\n{stdout}"
+    );
+}
+
+#[test]
 fn env_init_can_emit_powershell_integration() {
     let home = TempDir::new().unwrap();
 

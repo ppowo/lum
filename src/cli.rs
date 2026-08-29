@@ -1,89 +1,77 @@
 use crate::repos::scanner::ScanArgs;
-use clap::{Args, Parser, Subcommand, ValueEnum};
-use clap_complete::Shell;
 
-const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
-const GIT_COMMIT_HASH_SHORT: &str = match option_env!("LUM_GIT_COMMIT_HASH_SHORT") {
-    Some(hash) => hash,
-    None => "unknown",
-};
-const BUILD_TIME_UTC: &str = match option_env!("LUM_BUILD_TIME_UTC") {
-    Some(time) => time,
-    None => "unknown",
-};
+/// Full version string including commit hash and build timestamp.
+const LONG_VERSION: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (",
+    env!("LUM_GIT_COMMIT_HASH_SHORT"),
+    ") built ",
+    env!("LUM_BUILD_TIME_UTC")
+);
 
-#[derive(Debug, Parser)]
-#[command(
-    name = "lum",
-    long_version = long_version(),
-    about = "Opinionated CLI toolbox"
+#[derive(Debug, usage::Cli)]
+#[usage(
+    bin = "lum",
+    version = LONG_VERSION,
+    about = "Opinionated CLI toolbox",
+    arg_required_else_help,
+    completion
 )]
 pub struct Cli {
-    #[command(subcommand)]
+    #[usage(subcommand)]
     pub command: Commands,
 }
 
-use std::sync::LazyLock;
-
-/// Returns the long version string including commit hash and build timestamp.
-pub static LONG_VERSION: LazyLock<String> = LazyLock::new(|| {
-    format!(
-        "{} ({}) built {}",
-        PKG_VERSION, GIT_COMMIT_HASH_SHORT, BUILD_TIME_UTC
-    )
-});
-
-pub fn long_version() -> &'static str {
-    LONG_VERSION.as_str()
-}
-
-#[derive(Debug, Subcommand)]
+#[derive(Debug, usage::Subcommands)]
 pub enum Commands {
     /// Generate shell completions.
-    #[command(name = "__completions", hide = true)]
-    Completions { shell: Shell },
+    #[usage(name = "__completions", hide)]
+    Completions {
+        #[usage(value_enum)]
+        shell: CompletionShell,
+    },
     /// Internal radio playlist loop runner.
-    #[command(name = "__radio_playlist_runner", hide = true)]
+    #[usage(name = "__radio_playlist_runner", hide)]
     RadioPlaylistRunner { code: String },
     /// Internal Git credential helper.
-    #[command(name = "__git_credential", hide = true)]
+    #[usage(name = "__git_credential", hide)]
     GitCredential { route_id: String, operation: String },
     /// Listen to internet radio stations.
     Radio(RadioArgs),
     /// Backup and restore directories.
     Backup {
-        #[command(subcommand)]
+        #[usage(subcommand)]
         command: BackupCommand,
     },
     /// Manage shell environment variables and lum's bin path.
     Env {
-        #[command(subcommand)]
+        #[usage(subcommand)]
         command: EnvCommand,
     },
     /// Scan directory trees for Git repositories and report status.
     Repos {
-        #[command(subcommand)]
+        #[usage(subcommand)]
         command: ReposCommand,
     },
     /// Manage folder-based Git identities.
-    #[command(name = "git-id")]
+    #[usage(name = "git-id")]
     GitId {
-        #[command(subcommand)]
+        #[usage(subcommand)]
         command: GitIdCommand,
     },
     /// Manage curated developer tools installed into lum's bin path.
     Tools {
-        #[command(subcommand)]
+        #[usage(subcommand)]
         command: ToolsCommand,
     },
     /// Download audio, video, or albums from YouTube using yt-dlp.
     Yt {
-        #[command(subcommand)]
+        #[usage(subcommand)]
         command: YtCommand,
     },
     /// Install and manage fonts.
     Font {
-        #[command(subcommand)]
+        #[usage(subcommand)]
         command: FontCommand,
     },
     /// Set system volume to default or specified level.
@@ -93,8 +81,30 @@ pub enum Commands {
     },
 }
 
-#[derive(Debug, Args, Clone)]
-#[command(
+/// Shells accepted by the hidden `__completions` command.
+#[derive(Debug, Clone, Copy, usage::ValueEnum)]
+pub enum CompletionShell {
+    Bash,
+    Elvish,
+    Fish,
+    Powershell,
+    Zsh,
+}
+
+impl From<CompletionShell> for usage::complete::Shell {
+    fn from(shell: CompletionShell) -> Self {
+        match shell {
+            CompletionShell::Bash => Self::Bash,
+            CompletionShell::Elvish => Self::Elvish,
+            CompletionShell::Fish => Self::Fish,
+            CompletionShell::Powershell => Self::PowerShell,
+            CompletionShell::Zsh => Self::Zsh,
+        }
+    }
+}
+
+#[derive(Debug, usage::Args, Clone)]
+#[usage(
     after_help = "Commands:\n  lum radio                 List stations\n  lum radio <code>          Play a station (example: lum radio atma)\n  lum radio status          Show current playback state\n  lum radio stop            Stop playback and clear state"
 )]
 pub struct RadioArgs {
@@ -104,7 +114,7 @@ pub struct RadioArgs {
     pub arg: Option<String>,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, usage::Subcommands)]
 pub enum BackupCommand {
     /// Backup and restore ~/.bio.
     Bio { code: Option<String> },
@@ -112,34 +122,34 @@ pub enum BackupCommand {
     Openemu { code: Option<String> },
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, usage::ValueEnum)]
 pub enum EnvShell {
     Posix,
     Powershell,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, usage::Subcommands)]
 pub enum EnvCommand {
     /// Print shell integration code for eval in shell startup.
     Init {
-        #[arg(long, value_enum)]
+        #[usage(long, value_enum)]
         shell: Option<EnvShell>,
     },
     /// Set a managed environment variable alias.
     Set {
-        #[arg(long, value_enum)]
+        #[usage(long, value_enum)]
         shell: Option<EnvShell>,
         alias: String,
         value: String,
     },
     /// Unset a managed environment variable alias.
     Unset {
-        #[arg(long, value_enum)]
+        #[usage(long, value_enum)]
         shell: Option<EnvShell>,
         alias: String,
     },
     /// Show managed aliases and forced defaults.
-    #[command(visible_alias = "ls")]
+    #[usage(visible_alias = "ls")]
     List,
     /// Show alias to environment variable mappings.
     Aliases,
@@ -147,46 +157,46 @@ pub enum EnvCommand {
     Path,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, usage::Subcommands)]
 pub enum ToolsCommand {
     /// Install a managed tool.
     Install {
         tool: String,
-        #[arg(long)]
+        #[usage(long)]
         force: bool,
     },
     /// List managed tools and local state.
-    #[command(visible_alias = "ls")]
+    #[usage(visible_alias = "ls")]
     List,
     /// Show detailed status for one tool.
     Status { tool: String },
     /// Install missing tools and update outdated tools.
     Sync {
-        #[arg(long)]
+        #[usage(long)]
         dry_run: bool,
     },
     /// Update one managed tool.
     Update {
         tool: String,
-        #[arg(long)]
+        #[usage(long)]
         force: bool,
     },
     /// Show installed and latest version for one tool.
     Version { tool: String },
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, usage::Subcommands)]
 pub enum ReposCommand {
     /// Scan a directory tree for Git repositories and report branch and sync status.
     Scan(ScanArgs),
     /// Clone, update, and inspect configured mirror repositories.
     Mirror {
-        #[command(subcommand)]
+        #[usage(subcommand)]
         command: MirrorCommand,
     },
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, usage::Subcommands)]
 pub enum GitIdCommand {
     /// Print the path to the git identity config file.
     ConfigPath,
@@ -206,7 +216,7 @@ pub enum GitIdCommand {
     Paths,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, usage::Subcommands)]
 pub enum MirrorCommand {
     /// Print the path to the mirror config file.
     ConfigPath,
@@ -215,21 +225,21 @@ pub enum MirrorCommand {
     /// Create a sample mirror config file if none exists.
     Init,
     /// List configured mirror repositories.
-    #[command(visible_alias = "ls")]
+    #[usage(visible_alias = "ls")]
     List,
     /// Clone or update all configured mirror repositories.
     Sync {
         /// Maximum concurrent git operations.
-        #[arg(short = 'j', default_value = "4")]
+        #[usage(short = 'j', default = "4")]
         jobs: usize,
     },
     /// Check if local mirrors are up to date with their remotes.
     Status {
         /// Maximum concurrent git operations.
-        #[arg(short = 'j', default_value = "4")]
+        #[usage(short = 'j', default = "4")]
         jobs: usize,
         /// Compare against cached remote refs instead of contacting remotes.
-        #[arg(long)]
+        #[usage(long)]
         offline: bool,
     },
     /// Watch mirror repos for upstream changes and send desktop notifications.
@@ -237,44 +247,44 @@ pub enum MirrorCommand {
         /// Tag to filter repos by. Omit to see guidance.
         tag: Option<String>,
         /// Number of poll cycles to run. Test/support plumbing; omit for infinite (Ctrl+C to stop).
-        #[arg(long, hide = true)]
+        #[usage(long, hide)]
         cycles: Option<usize>,
     },
 }
-#[derive(Debug, Subcommand)]
+#[derive(Debug, usage::Subcommands)]
 pub enum YtCommand {
     /// Download audio from YouTube URL(s).
     Aud {
         /// YouTube URL(s) to download.
-        #[arg(required = true)]
+        #[usage(required = true)]
         urls: Vec<String>,
     },
     /// Download video from YouTube URL(s).
     Vid {
         /// Maximum video height (default: 1080).
-        #[arg(long)]
+        #[usage(long)]
         height: Option<u32>,
         /// YouTube URL(s) to download.
-        #[arg(required = true)]
+        #[usage(required = true)]
         urls: Vec<String>,
     },
     /// Download an album or playlist from YouTube URL(s).
     Alb {
         /// YouTube URL(s) to download.
-        #[arg(required = true)]
+        #[usage(required = true)]
         urls: Vec<String>,
     },
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, usage::Subcommands)]
 pub enum FontCommand {
     /// List managed fonts and local state.
-    #[command(visible_alias = "ls")]
+    #[usage(visible_alias = "ls")]
     List,
     /// Install a managed font.
     Install {
         font: String,
-        #[arg(long)]
+        #[usage(long)]
         force: bool,
     },
     /// Uninstall a managed font.
@@ -283,11 +293,16 @@ pub enum FontCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
+    use std::ffi::OsStr;
+
+    fn parse(args: &[&str]) -> Cli {
+        let argv: Vec<&OsStr> = args.iter().map(OsStr::new).collect();
+        Cli::parse_from(&argv).unwrap()
+    }
 
     #[test]
     fn parses_radio_without_station() {
-        let cli = Cli::parse_from(["lum", "radio"]);
+        let cli = parse(&["radio"]);
         match cli.command {
             Commands::Radio(args) => assert_eq!(args.arg, None),
             Commands::Backup { .. }
@@ -308,7 +323,7 @@ mod tests {
 
     #[test]
     fn parses_radio_with_station() {
-        let cli = Cli::parse_from(["lum", "radio", "atma"]);
+        let cli = parse(&["radio", "atma"]);
         match cli.command {
             Commands::Radio(args) => assert_eq!(args.arg.as_deref(), Some("atma")),
             Commands::Backup { .. }
@@ -328,8 +343,14 @@ mod tests {
     }
 
     #[test]
+    fn spec_is_valid() {
+        let spec: usage_parser::Spec = Cli::to_kdl().parse().unwrap();
+        let _ = spec;
+    }
+
+    #[test]
     fn parses_hidden_radio_playlist_runner() {
-        let cli = Cli::parse_from(["lum", "__radio_playlist_runner", "aphx"]);
+        let cli = parse(&["__radio_playlist_runner", "aphx"]);
         match cli.command {
             Commands::RadioPlaylistRunner { code } => assert_eq!(code, "aphx"),
             _ => panic!("expected hidden radio playlist runner command"),

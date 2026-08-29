@@ -2,6 +2,7 @@
 name = "lum"
 version = "0.2.4"
 edition = "2024"
+rust-version = "1.91"
 
 [build-dependencies]
 chrono = { version = "0.4.45", features = ["clock", "std"] }
@@ -13,8 +14,6 @@ resolver = "3"
 
 [dependencies]
 anyhow = "1.0.104"
-clap = { version = "4.6.4", features = ["derive"] }
-clap_complete = "4.6.8"
 directories = "6.0.0"
 reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "json", "multipart", "rustls"] }
 serde = { version = "1.0.229", features = ["derive"] }
@@ -39,10 +38,12 @@ sysinfo = "0.39.6"
 rand = "0.10.2"
 secrecy = { version = "0.10.3", features = ["serde"] }
 url = "2"
+usage = { package = "usage-rs", version = "6.5.0", features = ["completions"] }
 gix-credentials = { version = "0.39", default-features = false }
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
+usage-parser = { package = "usage-lib", version = "6.5.0" }
 predicates = "3.1.4"
 tempfile = "3.27.0"
 

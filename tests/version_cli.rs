@@ -14,6 +14,21 @@ fn version_includes_package_version() {
 }
 
 #[test]
+fn short_version_flag_matches_long_version_flag() {
+    let long = Command::cargo_bin("lum")
+        .unwrap()
+        .arg("--version")
+        .output()
+        .unwrap();
+    let short = Command::cargo_bin("lum")
+        .unwrap()
+        .arg("-V")
+        .output()
+        .unwrap();
+    assert_eq!(short.stdout, long.stdout);
+}
+
+#[test]
 fn version_includes_commit_hash() {
     Command::cargo_bin("lum")
         .unwrap()

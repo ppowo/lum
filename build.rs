@@ -6,9 +6,8 @@ fn main() {
 
     println!("cargo:rustc-env=LUM_BUILD_TIME_UTC={}", build_time());
 
-    if let Some(hash) = git_commit_hash_short() {
-        println!("cargo:rustc-env=LUM_GIT_COMMIT_HASH_SHORT={hash}");
-    }
+    let hash = git_commit_hash_short().unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:rustc-env=LUM_GIT_COMMIT_HASH_SHORT={hash}");
 }
 
 fn build_time() -> String {

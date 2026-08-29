@@ -14,7 +14,6 @@ mod vol;
 mod yt;
 
 use anyhow::Result;
-use clap::{CommandFactory, Parser};
 use cli::{Cli, Commands};
 
 #[tokio::main]
@@ -43,9 +42,7 @@ async fn run(cli: Cli) -> Result<()> {
     let _log_guard = logging::init()?;
     match cli.command {
         Commands::Completions { shell } => {
-            let mut cmd = Cli::command();
-            let name = cmd.get_name().to_owned();
-            clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
+            print!("{}", Cli::completion_script(shell.into()));
             Ok(())
         }
         Commands::RadioPlaylistRunner { code } => radio::run_playlist_runner(code).await,

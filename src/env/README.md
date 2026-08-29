@@ -15,7 +15,7 @@ lum env path
 
 `lum env init` emits shell code. On Unix shells, put `eval "$(lum env init)"` in `.bashrc`, `.zshrc`, or another POSIX-ish shell startup file. The emitted wrapper makes `lum env set` and `lum env unset` affect the current shell immediately without re-sourcing the startup file.
 
-The same init output also wires clap-generated completions for bash and zsh by evaluating `lum __completions <shell>` for the active shell.
+The same init output also wires shell completions for bash and zsh by evaluating `lum __completions <shell>` for the active shell. Generated scripts call back into `lum` at completion time for candidates.
 
 On Windows, PowerShell is the supported shell. Add this to `$PROFILE`:
 
@@ -25,7 +25,7 @@ Invoke-Expression (& lum env init)
 
 For testing or explicit selection, `lum env init`, `lum env set`, and `lum env unset` accept `--shell posix` or `--shell powershell`. The default is PowerShell on Windows and POSIX elsewhere.
 
-`lum __completions <shell>` is a hidden internal command backed by `clap_complete`; it currently supports clap's generated shells such as `bash`, `zsh`, `fish`, `elvish`, and `powershell`.
+`lum __completions <shell>` is a hidden internal command backed by `usage-rs`; it supports `bash`, `zsh`, `fish`, `elvish`, and `powershell`.
 
 ## Storage
 

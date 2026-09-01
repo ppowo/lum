@@ -214,3 +214,22 @@ fn env_set_and_unset_can_emit_powershell_statements() {
         .success()
         .stdout("Remove-Item Env:OPENROUTER_API_KEY -ErrorAction SilentlyContinue\n");
 }
+
+#[test]
+fn env_set_hypercharm_emits_export_and_init_replays() {
+    let home = TempDir::new().unwrap();
+
+    lum_with_env(&home)
+        .args(["env", "set", "hypercharm", "hc-test"])
+        .assert()
+        .success()
+        .stdout("export HYPERCHARM_API_KEY='hc-test'\n");
+
+    lum_with_env(&home)
+        .args(["env", "init"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "export HYPERCHARM_API_KEY='hc-test'",
+        ));
+}

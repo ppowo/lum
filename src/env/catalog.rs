@@ -1,6 +1,7 @@
 pub(crate) const ALIASES: &[(&str, &str)] = &[
     ("deepseek", "DEEPSEEK_API_KEY"),
     ("exa", "EXA_API_KEY"),
+    ("hypercharm", "HYPERCHARM_API_KEY"),
     ("neuralwatt", "NEURALWATT_API_KEY"),
     ("opencode", "OPENCODE_API_KEY"),
     ("openrouter", "OPENROUTER_API_KEY"),

@@ -60,6 +60,34 @@ pub(crate) fn tools_state_file() -> Result<PathBuf> {
     config_file("tools-state.json")
 }
 
+pub(crate) fn apps_state_file() -> Result<PathBuf> {
+    config_file("apps-state.json")
+}
+
+/// Install root for "lum apps": $LUM_APPS_DIR, else the per-user
+/// Applications/lum folder (created on demand by installs).
+pub(crate) fn apps_dir() -> Result<PathBuf> {
+    if let Some(dir) = std::env::var_os("LUM_APPS_DIR")
+        && !dir.is_empty()
+    {
+        return Ok(PathBuf::from(dir));
+    }
+    Ok(home_dir()?.join("Applications").join("lum"))
+}
+
+/// Directories scanned for foreign (unmanaged) copies of a managed app bundle.
+/// Overridable for tests via $LUM_APPS_FOREIGN_SCAN_DIRS (path list).
+pub(crate) fn foreign_scan_dirs() -> Vec<PathBuf> {
+    if let Some(dirs) = std::env::var_os("LUM_APPS_FOREIGN_SCAN_DIRS") {
+        return std::env::split_paths(&dirs).collect();
+    }
+    let mut dirs = vec![PathBuf::from("/Applications")];
+    if let Ok(home) = home_dir() {
+        dirs.push(home.join("Applications"));
+    }
+    dirs
+}
+
 pub(crate) fn git_id_config_file() -> Result<PathBuf> {
     config_file("git-identities.json")
 }

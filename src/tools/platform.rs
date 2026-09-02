@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail};
 
 use super::catalog::ToolSpec;
-use super::github::GitHubRelease;
+use crate::github::GitHubRelease;
 
 #[derive(Debug)]
 pub(crate) struct Artifact {

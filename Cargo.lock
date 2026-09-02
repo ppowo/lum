@@ -1537,6 +1537,7 @@ dependencies = [
  "chrono",
  "directories",
  "flate2",
+ "fs_extra",
  "gix-credentials",
  "globset",
  "ignore",

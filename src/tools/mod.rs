@@ -1,5 +1,4 @@
 mod catalog;
-mod github;
 mod install;
 mod platform;
 mod state;
@@ -192,7 +191,7 @@ fn resolve_latest(spec: &catalog::ToolSpec) -> Result<platform::Artifact> {
             checksum_sha256: None,
         });
     }
-    let release = github::latest_release(spec.owner, spec.repo)?;
+    let release = crate::github::latest_release(spec.owner, spec.repo)?;
     platform::artifact_for_release(spec, &release)
 }
 

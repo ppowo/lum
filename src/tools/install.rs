@@ -1,12 +1,11 @@
 use std::{
-    fs, io,
+    fs,
     path::{Path, PathBuf},
     time::SystemTime,
 };
 
 use anyhow::{Context, Result};
 use flate2::read::GzDecoder;
-use sha2::{Digest, Sha256};
 use xz2::read::XzDecoder;
 
 use super::catalog::ToolSpec;
@@ -23,8 +22,8 @@ pub(crate) fn install_artifact(
     let target = tool_path(spec)?;
     let temp_dir = tempfile::Builder::new().prefix("lum-tools-").tempdir()?;
     let download = temp_dir.path().join(&artifact.asset_name);
-    download_artifact(&artifact.download_url, &download)?;
-    verify_sha256(&download, artifact.checksum_sha256.as_deref())?;
+    crate::github::download_asset(&artifact.download_url, &download)?;
+    crate::github::verify_sha256(&download, artifact.checksum_sha256.as_deref())?;
     let source = materialize_binary(&download, temp_dir.path(), artifact)?;
     artifact::install_executable(&source, &target)?;
 
@@ -49,24 +48,6 @@ pub(crate) fn install_artifact(
     stored.tools.insert(spec.name.to_owned(), tool_state);
     save_state(&stored)?;
     Ok(stored.tools.remove(spec.name).unwrap())
-}
-
-fn download_artifact(url: &str, dest: &Path) -> Result<()> {
-    let path = Path::new(url);
-    if path.exists() {
-        fs::copy(path, dest)?;
-        return Ok(());
-    }
-    let mut response = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(600))
-        .user_agent("lum-tools/1.0")
-        .build()?
-        .get(url)
-        .send()?
-        .error_for_status()?;
-    let mut out = fs::File::create(dest)?;
-    io::copy(&mut response, &mut out)?;
-    Ok(())
 }
 
 fn materialize_binary(download: &Path, temp_dir: &Path, artifact: &Artifact) -> Result<PathBuf> {
@@ -123,29 +104,4 @@ fn find_file_named(dir: &Path, filename: &std::ffi::OsStr) -> Result<PathBuf> {
         }
     }
     Err(anyhow::anyhow!("not found"))
-}
-
-fn verify_sha256(path: &Path, expected: Option<&str>) -> Result<()> {
-    let Some(expected) = expected.filter(|s| !s.trim().is_empty()) else {
-        return Ok(());
-    };
-    let mut file = fs::File::open(path)?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 8192];
-    loop {
-        let read = io::Read::read(&mut file, &mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    let actual = hasher
-        .finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    if !actual.eq_ignore_ascii_case(expected.trim()) {
-        anyhow::bail!("checksum mismatch for {}", path.display());
-    }
-    Ok(())
 }

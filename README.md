@@ -1,11 +1,12 @@
 # lum
 
-`lum` is a small opinionated CLI toolbox for setting up shell environment variables, installing a curated set of developer tools, listening to a few internet radio stations, checking local Git repositories, and managing folder-based Git identities.
+`lum` is a small opinionated CLI toolbox for setting up shell environment variables, installing a curated set of developer tools and macOS apps, listening to a few internet radio stations, checking local Git repositories, and managing folder-based Git identities.
 
 The most useful commands for new users are:
 
 - `lum env` — manage API-key-style environment variables and add lum's managed tool directory to your shell `PATH`.
 - `lum tools` — install and update curated CLI tools like `scc` and `universal-ctags`.
+- `lum apps` — install and update macOS apps like OpenEmu that Homebrew disabled (macOS only).
 
 ## Install
 
@@ -184,6 +185,36 @@ lum tools update scc
 lum tools sync
 lum tools sync --dry-run
 ```
+
+## macOS apps
+
+`lum apps` installs and updates macOS applications that Homebrew can no longer distribute (Homebrew 5.0 requires signed and notarized casks). Apps are installed per-user into `~/Applications/lum` — no admin rights needed — and appear in Launchpad and Spotlight like any other app.
+
+Available apps:
+
+| App | Bundle | Description |
+| --- | --- | --- |
+| `openemu` | `OpenEmu.app` | Open source video game emulation for macOS |
+
+Common commands:
+
+```sh
+lum apps ls
+lum apps install openemu
+lum apps status openemu
+lum apps version openemu
+lum apps update openemu
+lum apps sync
+lum apps sync --dry-run
+```
+
+Notes:
+
+- Apps are unsigned; files downloaded by lum never get the `com.apple.quarantine` attribute, so they open normally.
+- If an unmanaged copy of the app already exists (for example an old Homebrew cask install in `/Applications`), lum refuses to install alongside it. Remove the old copy first, e.g. `brew uninstall --cask openemu`, or see `src/apps/README.md` for the exact rules.
+- OpenEmu is currently an Intel-only build; on Apple Silicon lum prints the one-time Rosetta 2 install command after installing.
+
+Pair `lum apps` with `lum backup openemu` to also back up emulator save states and configs.
 
 ## Other commands
 

@@ -64,6 +64,11 @@ pub enum Commands {
         #[usage(subcommand)]
         command: ToolsCommand,
     },
+    /// Manage macOS applications installed into a per-user Applications folder. (macOS only)
+    Apps {
+        #[usage(subcommand)]
+        command: AppsCommand,
+    },
     /// Download audio, video, or albums from YouTube using yt-dlp.
     Yt {
         #[usage(subcommand)]
@@ -183,6 +188,34 @@ pub enum ToolsCommand {
     },
     /// Show installed and latest version for one tool.
     Version { tool: String },
+}
+
+#[derive(Debug, usage::Subcommands)]
+pub enum AppsCommand {
+    /// Install a managed macOS app.
+    Install {
+        app: String,
+        #[usage(long)]
+        force: bool,
+    },
+    /// List managed macOS apps and local state.
+    #[usage(visible_alias = "ls")]
+    List,
+    /// Show detailed status for one managed app.
+    Status { app: String },
+    /// Update one managed macOS app.
+    Update {
+        app: String,
+        #[usage(long)]
+        force: bool,
+    },
+    /// Install missing, update outdated, and list up-to-date apps.
+    Sync {
+        #[usage(long)]
+        dry_run: bool,
+    },
+    /// Show installed and latest version for one app.
+    Version { app: String },
 }
 
 #[derive(Debug, usage::Subcommands)]
@@ -311,6 +344,7 @@ mod tests {
             | Commands::RadioPlaylistRunner { .. }
             | Commands::GitCredential { .. }
             | Commands::Tools { .. }
+            | Commands::Apps { .. }
             | Commands::Repos { .. }
             | Commands::GitId { .. }
             | Commands::Yt { .. }
@@ -332,6 +366,7 @@ mod tests {
             | Commands::RadioPlaylistRunner { .. }
             | Commands::GitCredential { .. }
             | Commands::Tools { .. }
+            | Commands::Apps { .. }
             | Commands::Repos { .. }
             | Commands::GitId { .. }
             | Commands::Yt { .. }
@@ -340,6 +375,17 @@ mod tests {
                 panic!("expected radio command")
             }
         }
+    }
+
+    #[test]
+    fn parses_apps_ls() {
+        let cli = parse(&["apps", "ls"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Apps {
+                command: AppsCommand::List
+            }
+        ));
     }
 
     #[test]

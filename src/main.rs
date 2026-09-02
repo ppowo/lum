@@ -1,3 +1,4 @@
+mod apps;
 mod artifact;
 mod backup;
 mod cli;
@@ -5,6 +6,7 @@ mod env;
 mod ffmpeg;
 mod font;
 mod git_id;
+mod github;
 mod logging;
 mod paths;
 mod radio;
@@ -54,6 +56,9 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::GitId { command } => git_id::run(command),
         Commands::Tools { command } => {
             tokio::task::spawn_blocking(move || tools::run(command)).await?
+        }
+        Commands::Apps { command } => {
+            tokio::task::spawn_blocking(move || apps::run(command)).await?
         }
         Commands::Yt { command } => yt::run(command).await,
         Commands::Font { command } => font::run(command),

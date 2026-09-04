@@ -15,6 +15,8 @@ lum env path
 
 `lum env init` emits shell code. On Unix shells, put `eval "$(lum env init)"` in `.bashrc`, `.zshrc`, or another POSIX-ish shell startup file. The emitted wrapper makes `lum env set` and `lum env unset` affect the current shell immediately without re-sourcing the startup file.
 
+Scope: the new value applies to the current shell immediately and to new shells (which replay state via `init`). Already-running processes (editors, agents like `pi`, daemons, other terminals) keep the environment they were started with — Unix copies env at spawn. Restart just that program from an updated shell to pick up the change; no reboot needed.
+
 The same init output also wires shell completions for bash and zsh by evaluating `lum __completions <shell>` for the active shell. Generated scripts call back into `lum` at completion time for candidates.
 
 On Windows, PowerShell is the supported shell. Add this to `$PROFILE`:
